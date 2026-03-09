@@ -258,6 +258,14 @@ python -m scripts.00_check_function_affinity --gfunc exp_minus_x --y 1.0 --rule 
 
 The intended workflow is to run this diagnostic first, and only attempt Triangulum hardware for functions that appear hardware-friendly under the current compression strategy.
 
+### Exploratory custom expressions
+
+The affinity diagnostic script `scripts/00_check_function_affinity.py` also supports an exploratory mode via `--expr`, for example:
+
+```powershell
+python -m scripts.00_check_function_affinity --expr "cos(pi*x)**2" --y 1.0 --rule midpoint
+```
+
 ## Implementation Notes (SpinQit)
 The repository is written against SpinQit’s circuit model and backend abstractions. The current implementation uses:
 
