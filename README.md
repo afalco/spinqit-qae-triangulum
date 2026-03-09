@@ -79,6 +79,91 @@ since the original deeper pattern-controlled implementation exceeded the hardwar
 - “Good state” marking: the ancilla being $|1\rangle$, implemented as a **single $Z$** on the ancilla qubit.
 - Reflection about $|0\cdots 0\rangle$: implemented via an $X$-conjugated CCZ (on 3 qubits, realized using standard decompositions with `CCX` and `H`).
 
+## Function Class and Hardware Design Assumptions
+
+The repository is not intended as a generic black-box integration engine for arbitrary functions on Triangulum. Its current hardware-oriented design assumes that the target integrand $g$ satisfies the following practical conditions.
+
+### 1. Bounded range
+The ancilla encoding is based on amplitudes, so the target function should satisfy
+
+$$
+0 \le g(x) \le 1 \qquad \text{for } x\in[0,1].
+$$
+
+This allows one to define rotation angles through
+
+$$
+\theta(x)=2\arcsin\!\big(\sqrt{g(x)}\big),
+$$
+
+so that the ancilla measurement probability reproduces the desired value.
+
+### 2. Small-grid compatibility
+The present Triangulum implementation uses only two index qubits, hence four quadrature nodes. Therefore, the relevant object for hardware execution is not the continuous function alone, but the four-angle table
+
+$$
+\{\theta_i\}_{i=0}^{3}
+$$
+
+obtained from the chosen quadrature rule.
+
+### 3. Hardware-friendly angle structure
+Because of the Triangulum line-depth limit, the most suitable functions are those for which the angle table can be implemented with a very shallow circuit. In particular, the hardware path is designed for functions whose discretized angles on the 2-qubit grid are exactly, or very nearly, of the affine form
+
+$$
+\theta(b_0,b_1)=c_0+c_1 b_0+c_2 b_1,
+$$
+
+where $b_0,b_1\in\{0,1\}$ are the index bits.
+
+For this class, the state-preparation operator $A$ can be compressed into:
+
+- Hadamards on the index register,
+- one single-qubit $R_y$ on the ancilla,
+- and a small number of singly controlled $R_y$ gates.
+
+This is the key reason why the current implementation is experimentally viable on Triangulum.
+
+### 4. Functions that are best suited to the current repository
+The repository is therefore best suited to:
+
+- benchmark functions with values in $[0,1]$,
+- functions whose discretized angle table is affine or nearly affine on the 4-point grid,
+- shallow numerical-integration demonstrations under strict hardware depth constraints,
+- comparative studies of quadrature rule, shot budget, and reduced MLAE schedules.
+
+The current benchmark
+
+$$
+g(x)=\sin^2(\pi x)
+$$
+
+is particularly suitable because, on the 2-qubit grid used here, its induced angles admit a compressed implementation compatible with Triangulum.
+
+### 5. Function candidates under the current Triangulum constraints
+
+| Function | Exact integral on $[0,1]$ | Values in $[0,1]$ | Affine-angle friendly on 4-point grid | Simulator | Triangulum hardware | Suggested label |
+|---|---:|:---:|:---:|:---:|:---:|---|
+| $\sin^2(\pi x)$ | $\tfrac12$ | Yes | Yes | Yes | Yes | hardware-friendly |
+| $x$ | $\tfrac12$ | Yes | Often near-affine, check explicitly | Yes | Likely | candidate |
+| $x^2$ | $\tfrac13$ | Yes | Usually not exact; test compression | Yes | Possibly with approximation | candidate |
+| $4x(1-x)$ | $\tfrac23$ | Yes | Often structured, but check explicitly | Yes | Possibly | candidate |
+| $e^{-x}$ | $1-e^{-1}$ | Yes | Typically non-affine on the 4-point grid | Yes | Usually simulator-first | simulation-ready |
+| General normalized smooth $g$ | depends on $g$ | If normalized | Not guaranteed | Yes | Case by case | simulation-ready |
+| Arbitrary high-complexity $g$ | depends on $g$ | not guaranteed | No | Sometimes | No, in general | simulation-only |
+
+This table should be read as a practical guide, not as a formal classification theorem. Under the current codebase, the decisive hardware question is whether the induced four-angle table can be implemented with the compressed shallow construction.
+
+### 6. What is currently not the main target
+The present hardware workflow is not primarily designed for:
+
+- arbitrary high-complexity functions,
+- functions requiring exact multi-pattern controlled rotations with large circuit depth,
+- larger quadrature grids beyond the 3-qubit Triangulum setting,
+- fully generic function loading without hardware-aware compression.
+
+Such functions can still be explored in simulation, but they may exceed the depth budget of the NMR hardware path.
+
 ## Hardware-Constrained Implementation
 A key practical point of this repository is that the original exact pattern-controlled implementation of the state-preparation operator $A$ was too deep for the Triangulum hardware limit. In particular, even the $k=0$ hardware run exceeded the maximum allowed line depth when using the generic construction.
 
@@ -89,6 +174,56 @@ To address this, `src/qae/state_prep.py` includes a compressed affine-angle impl
 - and a small number of singly controlled $R_y$ gates.
 
 This compressed construction makes the reduced MLAE hardware protocol feasible on Triangulum.
+
+## Repository Modification Strategy for Additional Functions
+The repository can be extended to additional integrands, but the recommended development strategy is to distinguish clearly between the **simulation path** and the **Triangulum hardware path**.
+
+### Simulation path
+For simulation, the natural extension is broad. Any function satisfying
+
+$$
+0 \le g(x) \le 1
+$$
+
+can be incorporated by defining its pointwise values and the corresponding angles
+
+$$
+\theta_i = 2\arcsin\!\big(\sqrt{g(x_i)}\big).
+$$
+
+This is the right setting for adding benchmark functions such as:
+
+- $g(x)=x$,
+- $g(x)=x^2$,
+- $g(x)=4x(1-x)$,
+- $g(x)=e^{-x}$,
+- other smooth functions normalized to $[0,1]$.
+
+### Triangulum hardware path
+For hardware, new functions should be added only after checking whether their four-node angle table is compatible with a shallow compressed implementation.
+
+A practical criterion is:
+
+1. compute the four angles induced by the chosen quadrature rule,
+2. test whether they satisfy an affine relation in the index bits,
+3. if yes, use the compressed hardware implementation,
+4. if not, keep the function for simulator-only studies or introduce an explicit approximation strategy.
+
+### Recommended implementation roadmap
+A clean extension of the repository would proceed as follows:
+
+1. Add a `--gfunc` option to the simulator and Triangulum scripts.
+2. Generalize `src/qae/state_prep.py` so that `_g_value` supports several named benchmark functions.
+3. Record `gfunc` in all JSON/CSV outputs.
+4. Mark each function in the documentation as either:
+   - `simulation-ready`,
+   - `hardware-friendly`,
+   - `candidate`,
+   - or `simulation-only` under the current Triangulum constraints.
+5. Add a small utility that tests whether the discretized angle table is affine on the 2-qubit grid and reports a fit residual.
+6. Keep the simulator path broad, but document the hardware path conservatively.
+
+This would preserve the scientific clarity of the repository: the code would support broader function classes in simulation while being explicit about what remains feasible on the actual hardware.
 
 ## Implementation Notes (SpinQit)
 The repository is written against SpinQit’s circuit model and backend abstractions. The current implementation uses:
