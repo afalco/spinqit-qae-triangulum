@@ -8,7 +8,7 @@ The repository focuses on a minimal, experimentally viable instantiation of QAE 
 
 1. **Triangulum-compatible state preparation** $A$ for numerical quadrature, using a small grid (2 “index” qubits) and one ancilla qubit whose measurement probability encodes the integrand value.
 2. **Shallow QAE estimation** via repeated execution of circuits $Q^k A |0\rangle$ for a small set of amplification indices $k$, followed by **classical maximum likelihood estimation** of the amplitude parameter.
-3. A **reproducible experimental pipeline**: consistent scripts, logging, and structured outputs (CSV/JSON) for benchmarking across simulator and NMR hardware runs.
+3. A **reproducible experimental pipeline**: consistent scripts, logging, structured outputs (CSV/JSON), and a diagnostic script for screening functions before attempting hardware execution.
 4. A **depth-constrained hardware implementation** for Triangulum, where the original pattern-controlled version of $A$ exceeded the device line-depth limit and was replaced by a compressed affine-angle construction enabling practical execution with $k \in \{0,1\}$.
 5. A **pandas-free execution and summarization workflow**, including simulator runs, Triangulum runs, postprocessing utilities, and a reusable three-rule campaign driver.
 
@@ -145,14 +145,18 @@ is particularly suitable because, on the 2-qubit grid used here, its induced ang
 | Function | Exact integral on $[0,1]$ | Values in $[0,1]$ | Affine-angle friendly on 4-point grid | Simulator | Triangulum hardware | Suggested label |
 |---|---:|:---:|:---:|:---:|:---:|---|
 | $\sin^2(\pi x)$ | $\tfrac12$ | Yes | Yes | Yes | Yes | hardware-friendly |
-| $x$ | $\tfrac12$ | Yes | Often near-affine, check explicitly | Yes | Likely | candidate |
-| $x^2$ | $\tfrac13$ | Yes | Usually not exact; test compression | Yes | Possibly with approximation | candidate |
-| $4x(1-x)$ | $\tfrac23$ | Yes | Often structured, but check explicitly | Yes | Possibly | candidate |
-| $e^{-x}$ | $1-e^{-1}$ | Yes | Typically non-affine on the 4-point grid | Yes | Usually simulator-first | simulation-ready |
+| $x$ | $\tfrac12$ | Yes | Yes | Yes | Yes | hardware-friendly |
+| $x^2$ | $\tfrac13$ | Yes | No | Yes | No (current path) | simulation-ready |
+| $4x(1-x)$ | $\tfrac23$ | Yes | No | Yes | No (current path) | simulation-ready |
+| $e^{-x}$ | $1-e^{-1}$ | Yes | No | Yes | Not recommended initially | simulation-ready |
 | General normalized smooth $g$ | depends on $g$ | If normalized | Not guaranteed | Yes | Case by case | simulation-ready |
 | Arbitrary high-complexity $g$ | depends on $g$ | not guaranteed | No | Sometimes | No, in general | simulation-only |
 
-This table should be read as a practical guide, not as a formal classification theorem. Under the current codebase, the decisive hardware question is whether the induced four-angle table can be implemented with the compressed shallow construction.
+This table reflects the current empirical status of the repository under the present state-preparation strategy. In particular, direct tests on Triangulum already support the classification:
+
+- hardware-friendly: `sin2_pi`, `x`
+- simulation-ready: `x2`, `parabola`
+- simulation-first: `exp_minus_x`
 
 ### 6. What is currently not the main target
 The present hardware workflow is not primarily designed for:
@@ -216,14 +220,43 @@ A clean extension of the repository would proceed as follows:
 2. Generalize `src/qae/state_prep.py` so that `_g_value` supports several named benchmark functions.
 3. Record `gfunc` in all JSON/CSV outputs.
 4. Mark each function in the documentation as either:
-   - `simulation-ready`,
    - `hardware-friendly`,
-   - `candidate`,
+   - `simulation-ready`,
    - or `simulation-only` under the current Triangulum constraints.
-5. Add a small utility that tests whether the discretized angle table is affine on the 2-qubit grid and reports a fit residual.
+5. Add and use a small diagnostic utility that tests whether the discretized angle table is affine on the 2-qubit grid and reports a fit residual.
 6. Keep the simulator path broad, but document the hardware path conservatively.
 
-This would preserve the scientific clarity of the repository: the code would support broader function classes in simulation while being explicit about what remains feasible on the actual hardware.
+This preserves the scientific clarity of the repository: the code supports broader function classes in simulation while being explicit about what remains feasible on the actual hardware.
+
+## Affinity Diagnostic Script
+The repository includes a dedicated screening utility:
+
+- `scripts/00_check_function_affinity.py`
+
+This script evaluates a candidate function on the 4-point quadrature grid, computes the induced angle table, fits the affine model
+
+$$
+\theta(b_0,b_1)=c_0+c_1 b_0+c_2 b_1,
+$$
+
+and reports:
+
+- the quadrature nodes,
+- the values $g(x_i)$,
+- the angles $\theta_i$,
+- the affine-fit coefficients,
+- the residual,
+- and a practical recommendation for simulation or hardware.
+
+Typical usage:
+
+```powershell
+python -m scripts.00_check_function_affinity --gfunc x --y 1.0 --rule midpoint
+python -m scripts.00_check_function_affinity --gfunc x2 --y 1.0 --rule midpoint
+python -m scripts.00_check_function_affinity --gfunc exp_minus_x --y 1.0 --rule midpoint
+```
+
+The intended workflow is to run this diagnostic first, and only attempt Triangulum hardware for functions that appear hardware-friendly under the current compression strategy.
 
 ## Implementation Notes (SpinQit)
 The repository is written against SpinQit’s circuit model and backend abstractions. The current implementation uses:
@@ -248,6 +281,7 @@ The experiment is designed specifically so that all core building blocks reduce 
 
 In particular, the main runnable scripts are:
 
+- `scripts/00_check_function_affinity.py`
 - `scripts/01_run_mlae_sim.py`
 - `scripts/02_run_mlae_triangulum.py`
 - `scripts/03_summarize_results.py`
@@ -255,38 +289,45 @@ In particular, the main runnable scripts are:
 
 ## Main Experimental Scripts
 
+### Affinity diagnostic
+Check whether a function is a plausible Triangulum candidate:
+
+```powershell
+python -m scripts.00_check_function_affinity --gfunc sin2_pi --y 1.0 --rule midpoint
+```
+
 ### Simulator
 Run a reference simulation:
 
 ```powershell
-python -m scripts.01_run_mlae_sim --y 1.0 --rule midpoint --ks 0,1,2 --shots 4096
+python -m scripts.01_run_mlae_sim --gfunc x2 --y 1.0 --rule midpoint --ks 0,1,2 --shots 4096 --ancilla-bit-index-from-right 0
 ```
 
 ### Triangulum hardware
 Run a reduced hardware experiment:
 
 ```powershell
-python -m scripts.02_run_mlae_triangulum --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --y 1.0 --rule midpoint --ks 0,1 --shots 1024
+python -m scripts.02_run_mlae_triangulum --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --gfunc x --y 1.0 --rule midpoint --ks 0,1 --shots 1024
 ```
 
 ### Summarization
 Aggregate raw JSON files into processed CSV summaries:
 
 ```powershell
-python -m scripts.03_summarize_results --pattern "triangulum_*.json"
+python -m scripts.03_summarize_results --pattern "*.json"
 ```
 
 ### Full three-rule campaign
 Run or reuse the complete `left` / `midpoint` / `right` campaign:
 
 ```powershell
-python -m scripts.04_run_triangulum_campaign --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --y 1.0 --ks 0,1 --shots 1024
+python -m scripts.04_run_triangulum_campaign --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024
 ```
 
 To recompute the campaign summary without relaunching hardware:
 
 ```powershell
-python -m scripts.04_run_triangulum_campaign --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --y 1.0 --ks 0,1 --shots 1024 --reuse-existing
+python -m scripts.04_run_triangulum_campaign --ip 10.30.227.5 --port 55444 --account USER --password PASSWORD --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024 --reuse-existing
 ```
 
 ## Environment Setup
@@ -319,6 +360,7 @@ python -m scripts.02_run_mlae_triangulum `
   --port $env:SPINQ_PORT `
   --account $env:SPINQ_USER `
   --password $env:SPINQ_PASS `
+  --gfunc x `
   --y 1.0 `
   --rule midpoint `
   --ks 0,1 `
@@ -334,26 +376,37 @@ $env:SPINQ_USER="user1"
 $env:SPINQ_PASS="YOUR_PASSWORD"
 ```
 
+Important bit-ordering note:
+
+- in the **simulator**, the current default is `--ancilla-bit-index-from-right 0`
+- in the **Triangulum NMR backend**, the current working default remains `--ancilla-bit-index-from-right 2`
+
+If results look inconsistent, calibrate the ancilla bit ordering explicitly.
+
 ## Reproducibility and Outputs
 Each run produces structured outputs capturing:
 
 - hardware/backend configuration (simulator vs NMR),
+- chosen target function `gfunc`,
 - chosen discretization rule (`left`, `right`, `midpoint`),
 - amplification indices $\mathcal{K}$,
 - shot counts and ancilla statistics per $k$,
-- fitted amplitude $\hat a$ and derived integral estimate $\widehat{I}(y)$.
+- fitted amplitude $\hat a$ and derived integral estimate $\widehat{I}(y)$,
+- exact integral when available,
+- hardware-affinity metadata for the current Triangulum path.
 
 These outputs are intended to support:
 
 - cross-backend comparisons,
 - stability analysis under varying $k$ and shot budgets,
-- controlled evaluation of discretization vs estimation error.
+- controlled evaluation of discretization vs estimation error,
+- and explicit separation between simulation-ready and hardware-friendly function classes.
 
 ## Example Hardware Campaign Result
 For the Triangulum campaign with
 
 $$
-y=1,\qquad \mathcal{K}=\{0,1\},\qquad \text{shots}=1024,
+g(x)=\sin^2(\pi x),\qquad y=1,\qquad \mathcal{K}=\{0,1\},\qquad \text{shots}=1024,
 $$
 
 the repository produced the following representative estimates:
@@ -377,32 +430,53 @@ $$
 
 these results show that the reduced depth-constrained protocol is experimentally viable on the 3-qubit Triangulum device.
 
+A second direct hardware test with
+
+$$
+g(x)=x
+$$
+
+also succeeded under the same reduced schedule, whereas tests with
+
+$$
+g(x)=x^2
+\qquad\text{and}\qquad
+g(x)=4x(1-x)
+$$
+
+exceeded the current line-depth limit.
+
 ## Recommended Workflow
 
-### 1. Validate in simulation
+### 1. Check function affinity
 ```powershell
-python -m scripts.01_run_mlae_sim --y 1.0 --rule midpoint --ks 0,1,2 --shots 4096
+python -m scripts.00_check_function_affinity --gfunc x --y 1.0 --rule midpoint
 ```
 
-### 2. Run a reduced Triangulum test
+### 2. Validate in simulation
 ```powershell
-python -m scripts.02_run_mlae_triangulum --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --y 1.0 --rule midpoint --ks 0,1 --shots 1024
+python -m scripts.01_run_mlae_sim --gfunc x --y 1.0 --rule midpoint --ks 0,1,2 --shots 4096 --ancilla-bit-index-from-right 0
 ```
 
-### 3. Launch the full three-rule hardware campaign
+### 3. Run a reduced Triangulum test only for hardware-friendly functions
 ```powershell
-python -m scripts.04_run_triangulum_campaign --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --y 1.0 --ks 0,1 --shots 1024
+python -m scripts.02_run_mlae_triangulum --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --gfunc x --y 1.0 --rule midpoint --ks 0,1 --shots 1024
 ```
 
-### 4. Recompute the campaign summary without relaunching hardware
+### 4. Launch the full three-rule hardware campaign when appropriate
 ```powershell
-python -m scripts.04_run_triangulum_campaign --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --y 1.0 --ks 0,1 --shots 1024 --reuse-existing
+python -m scripts.04_run_triangulum_campaign --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024
+```
+
+### 5. Recompute the campaign summary without relaunching hardware
+```powershell
+python -m scripts.04_run_triangulum_campaign --ip $env:SPINQ_IP --port $env:SPINQ_PORT --account $env:SPINQ_USER --password $env:SPINQ_PASS --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024 --reuse-existing
 ```
 
 ## Troubleshooting
 
 ### `Line depth exceeds limit:60`
-The original exact pattern-controlled version of $A$ may exceed the Triangulum hardware limit. Use the compressed implementation currently included in `src/qae/state_prep.py` and the reduced schedule $k \in \{0,1\}$.
+The original exact pattern-controlled version of $A$ may exceed the Triangulum hardware limit. Use the compressed implementation currently included in `src/qae/state_prep.py`, run `scripts.00_check_function_affinity.py` first, and restrict hardware tests to functions that are hardware-friendly under the current criterion.
 
 ### `ModuleNotFoundError: No module named 'src'`
 Run the scripts from the repository root using module mode:
@@ -410,6 +484,9 @@ Run the scripts from the repository root using module mode:
 ```powershell
 python -m scripts.01_run_mlae_sim ...
 ```
+
+### Inconsistent simulator estimates for new functions
+Check the ancilla bit ordering. The simulator currently uses `--ancilla-bit-index-from-right 0` as working default. Using a mismatched bit index can produce apparently reasonable but incorrect estimates.
 
 ### SpinQit API differences
 SpinQit versions may differ in simulator and NMR execution signatures. The wrappers in `src/backends/` are intended to isolate these differences. If needed, adapt:
