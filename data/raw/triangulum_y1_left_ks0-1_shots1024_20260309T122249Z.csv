@@ -1,3 +1,0 @@
-run_id,backend,y,rule,k,shots,successes,p_hat,a_hat_global,I_hat_global,timestamp_utc
-triangulum_y1_left_ks0-1_shots1024_20260309T122249Z,triangulum_nmr,1.0,left,0,1024,522,0.509765625,0.5068372491153351,0.5068372491153351,20260309T122249Z
-triangulum_y1_left_ks0-1_shots1024_20260309T122249Z,triangulum_nmr,1.0,left,1,1024,492,0.48046875,0.5068372491153351,0.5068372491153351,20260309T122249Z

@@ -1,2 +1,0 @@
-run_id,backend,y,rule,k,shots,successes,p_hat,a_hat_global,I_hat_global,timestamp_utc
-triangulum_y1_midpoint_ks1_shots1024_20260309T120844Z,triangulum_nmr,1.0,midpoint,1,1024,512,0.5,0.5000000001181382,0.5000000001181382,20260309T120844Z
