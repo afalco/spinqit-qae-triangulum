@@ -1,12 +1,10 @@
-# scripts/01_run_mlae_sim.py
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 from datetime import datetime, timezone
-
-import pandas as pd
 
 from src.backends.simulator import SimulatorBackend, SimulatorConfig
 from src.qae.mlae import run_mlae
@@ -39,6 +37,20 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def write_csv(rows: list[dict], out_csv: str) -> None:
+    if not rows:
+        # Still create an empty file with no content if desired
+        with open(out_csv, "w", encoding="utf-8", newline="") as f:
+            pass
+        return
+
+    fieldnames = list(rows[0].keys())
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def main() -> None:
     args = parse_args()
     ks = tuple(int(x.strip()) for x in args.ks.split(",") if x.strip() != "")
@@ -57,7 +69,6 @@ def main() -> None:
     # Convert counts -> successes
     successes = []
     for counts in rr.counts_per_k:
-        total = sum(counts.values())
         succ = 0
         for bitstr, c in counts.items():
             s = bitstr.replace("0b", "").strip()
@@ -116,7 +127,8 @@ def main() -> None:
                 "timestamp_utc": stamp,
             }
         )
-    pd.DataFrame(rows).to_csv(out_csv, index=False)
+
+    write_csv(rows, out_csv)
 
     print(f"[OK] Wrote:\n  {out_json}\n  {out_csv}")
     print(f"[MLE] a_hat={mle.a_hat:.6f}  I_hat={report.I_hat:.6f}")

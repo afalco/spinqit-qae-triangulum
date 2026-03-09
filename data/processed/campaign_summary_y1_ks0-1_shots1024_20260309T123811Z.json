@@ -1,0 +1,38 @@
+{
+  "campaign_id": "triangulum_campaign_y1_20260309T123811Z",
+  "y": 1.0,
+  "ks": [
+    0,
+    1
+  ],
+  "shots_per_k": 1024,
+  "I_exact": 0.5,
+  "rules": {
+    "left": {
+      "run_id": "triangulum_y1_left_ks0-1_shots1024_20260309T122249Z",
+      "I_hat": 0.5068372491153351,
+      "a_hat": 0.5068372491153351,
+      "abs_error": 0.00683724911533512,
+      "source_json": "triangulum_y1_left_ks0-1_shots1024_20260309T122249Z.json"
+    },
+    "midpoint": {
+      "run_id": "triangulum_y1_midpoint_ks0-1_shots1024_20260309T121842Z",
+      "I_hat": 0.500683590381209,
+      "a_hat": 0.500683590381209,
+      "abs_error": 0.0006835903812090205,
+      "source_json": "triangulum_y1_midpoint_ks0-1_shots1024_20260309T121842Z.json"
+    },
+    "right": {
+      "run_id": "triangulum_y1_right_ks0-1_shots1024_20260309T122701Z",
+      "I_hat": 0.49970701589086014,
+      "a_hat": 0.49970701589086014,
+      "abs_error": 0.00029298410913985995,
+      "source_json": "triangulum_y1_right_ks0-1_shots1024_20260309T122701Z.json"
+    }
+  },
+  "simpson": {
+    "I_hat": 0.5015464377551718,
+    "abs_error": 0.0015464377551718256,
+    "formula": "(I_left + 4*I_midpoint + I_right)/6"
+  }
+}

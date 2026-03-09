@@ -1,4 +1,3 @@
-# src/backends/simulator.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,41 +7,65 @@ from typing import Dict
 @dataclass
 class SimulatorConfig:
     shots: int = 4096
+    optimization_level: int = 0
 
 
 class SimulatorBackend:
     """
-    Thin wrapper around a SpinQit simulator backend.
+    Thin wrapper around the SpinQit basic simulator backend.
 
-    The exact simulator getter name can vary by SpinQit version.
-    If `get_basic_simulator()` does not exist in your installation, replace it with
-    the appropriate simulator constructor (e.g., statevector or qasm-style simulator).
+    SpinQit 0.2.2 uses the following flow:
+      1) get compiler + backend
+      2) compile the circuit
+      3) configure shots via BasicSimulatorConfig
+      4) execute(compiled_circuit, config)
+
+    The official docs example uses:
+        comp = get_compiler("native")
+        engine = get_basic_simulator()
+        exe = comp.compile(circ, optimization_level)
+        config = BasicSimulatorConfig()
+        config.configure_shots(1024)
+        result = engine.execute(exe, config)
+        print(result.counts)
+     [oai_citation:1‡doc.spinq.cn](https://doc.spinq.cn/doc/spinqit/basics/basics.html?utm_source=chatgpt.com)
     """
 
     def __init__(self, cfg: SimulatorConfig = SimulatorConfig()):
         self.cfg = cfg
-        self._engine = self._make_engine()
+        self._compiler, self._engine, self._simcfg_cls = self._make_runtime()
 
     @staticmethod
-    def _make_engine():
-        from spinqit import get_basic_simulator  # type: ignore
-        return get_basic_simulator()
+    def _make_runtime():
+        try:
+            from spinqit import get_basic_simulator, get_compiler, BasicSimulatorConfig  # type: ignore
+        except Exception as e:
+            raise ImportError(
+                "Could not import get_basic_simulator, get_compiler, or BasicSimulatorConfig "
+                "from spinqit. Please adapt SimulatorBackend to your local SpinQit version."
+            ) from e
+
+        compiler = get_compiler("native")
+        engine = get_basic_simulator()
+        return compiler, engine, BasicSimulatorConfig
 
     def run(self, circuit, shots: int = 4096) -> Dict[str, int]:
+        compiler = self._compiler
         engine = self._engine
-        result = None
+        BasicSimulatorConfig = self._simcfg_cls
 
-        # Try common invocation patterns
         try:
-            result = engine.execute(circuit, shots=shots)
-        except Exception:
-            try:
-                result = engine.run(circuit, shots=shots)
-            except Exception as e:
-                raise RuntimeError(
-                    "Could not execute circuit on simulator backend. "
-                    "Please adapt SimulatorBackend.run() to your SpinQit version."
-                ) from e
+            exe = compiler.compile(circuit, self.cfg.optimization_level)
+
+            config = BasicSimulatorConfig()
+            config.configure_shots(int(shots))
+
+            result = engine.execute(exe, config)
+        except Exception as e:
+            raise RuntimeError(
+                "Could not execute circuit on simulator backend using the "
+                "SpinQit compile + BasicSimulatorConfig flow."
+            ) from e
 
         if isinstance(result, dict):
             return result
@@ -51,4 +74,7 @@ class SimulatorBackend:
         if hasattr(result, "get_counts"):
             return result.get_counts()
 
-        raise RuntimeError("Simulator backend returned an unsupported result type; please adapt counts extraction.")
+        raise RuntimeError(
+            "Simulator backend returned an unsupported result type; "
+            "please adapt counts extraction."
+        )

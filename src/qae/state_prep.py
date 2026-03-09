@@ -1,4 +1,4 @@
-# src/qae/state_prep.py
+#src/qae/state_prep.py
 from __future__ import annotations
 
 import math
@@ -49,8 +49,10 @@ def build_A_spec(
 
     We use the convenient encoding:
       Pr(anc=1 | i) = sin^2(theta_i/2)
+
     For g(x)=sin^2(pi x), we can set:
       theta_i = 2*pi*x_i
+
     so that sin^2(theta_i/2) = sin^2(pi x_i) = g(x_i).
     """
     if len(index_qubits) != n_index_qubits:
@@ -83,69 +85,126 @@ def _get_gates():
     """
     from spinqit import H, X, Ry  # type: ignore
 
-    # ControlledGate is documented in SpinQit; import path may differ by version.
     try:
-        from spinqit import ControlledGate  # type: ignore
+        from spinqit.primitive import MultiControlledGateBuilder  # type: ignore
     except Exception as e:
-        raise ImportError("Could not import ControlledGate from spinqit. "
-                          "Please adapt _get_gates() to your SpinQit version.") from e
-    return H, X, Ry, ControlledGate
+        raise ImportError(
+            "Could not import MultiControlledGateBuilder from spinqit. "
+            "Please adapt _get_gates() to your SpinQit version."
+        ) from e
+
+    return H, X, Ry, MultiControlledGateBuilder
 
 
-def _apply_controlled_ry_on_pattern(circuit, controls: Sequence[int], ancilla: int, theta: float, bits: Tuple[int, ...]):
+def _extract_affine_angles_for_two_controls(spec: ASpec):
     """
-    Apply a multi-controlled Ry(theta) on ancilla, conditioned on controls being exactly 'bits'.
-    Implemented using X-flips for 0-bits + nested ControlledGate wrapping.
-    """
-    H, X, Ry, ControlledGate = _get_gates()
+    If the 4 pattern angles satisfy
+        theta(b0,b1) = c0 + c1*b0 + c2*b1
+    return (c0, c1, c2). Otherwise return None.
 
-    # Flip controls where we need a 0-condition so that "match bits" becomes "all-ones"
+    Bit ordering follows spec.patterns as produced by build_A_spec:
+      (0,0), (0,1), (1,0), (1,1)
+    with b0 = first index qubit, b1 = second index qubit.
+    """
+    if len(spec.index_qubits) != 2 or len(spec.patterns) != 4:
+        return None
+
+    angle_map = {bits: theta for bits, theta in spec.patterns}
+
+    required = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    if any(bits not in angle_map for bits in required):
+        return None
+
+    t00 = angle_map[(0, 0)]
+    t01 = angle_map[(0, 1)]
+    t10 = angle_map[(1, 0)]
+    t11 = angle_map[(1, 1)]
+
+    c0 = t00
+    c1 = t10 - t00
+    c2 = t01 - t00
+
+    if abs((c0 + c1 + c2) - t11) > 1e-9:
+        return None
+
+    return c0, c1, c2
+
+
+def _apply_single_controlled_ry(circuit, control: int, target: int, theta: float):
+    if abs(theta) < 1e-12:
+        return
+
+    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+    c_ry = MultiControlledGateBuilder(1, Ry, [theta]).to_gate()
+    circuit << (c_ry, (control, target))
+
+
+def _apply_controlled_ry_on_pattern(
+    circuit,
+    controls: Sequence[int],
+    ancilla: int,
+    theta: float,
+    bits: Tuple[int, ...],
+):
+    """
+    Apply a multi-controlled Ry(theta) on ancilla, conditioned on controls
+    being exactly 'bits'.
+
+    We implement the exact bit-pattern condition by X-flipping the controls
+    where bits[j] = 0, so the condition becomes all-ones, then applying a
+    multi-controlled Ry(theta), then undoing the flips.
+    """
+    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+
     flipped = []
     for q, b in zip(controls, bits):
         if b == 0:
             circuit << (X, q)
             flipped.append(q)
 
-    # Build controlled gate (nest controls)
-    gate = Ry(theta)
-    for _ in controls:
-        gate = ControlledGate(gate)
+    mc_ry = MultiControlledGateBuilder(len(controls), Ry, [theta]).to_gate()
 
-    # The calling convention for applying a k-controlled gate differs across SDKs.
-    # We try common patterns:
+    qubits = tuple(list(controls) + [ancilla])
+
     try:
-        # pattern: circuit << (gate, *controls, ancilla)
-        circuit << (gate, *controls, ancilla)
-    except TypeError:
-        try:
-            # pattern: circuit << (gate, controls + [ancilla])
-            circuit << (gate, *(list(controls) + [ancilla]))
-        except Exception as e:
-            raise RuntimeError(
-                "Could not apply multi-controlled Ry. "
-                "Please adapt _apply_controlled_ry_on_pattern to your SpinQit gate call signature."
-            ) from e
+        circuit << (mc_ry, qubits)
+    except Exception as e:
+        raise RuntimeError(
+            f"Could not apply multi-controlled Ry on qubits {qubits}. "
+            "Your local SpinQit build may use a different call signature."
+        ) from e
 
-    # Unflip
     for q in flipped:
         circuit << (X, q)
 
 
 def apply_A_from_spec(circuit, spec: ASpec):
     """Append the state-preparation operator A described by `spec` to `circuit`."""
-    H, X, Ry, ControlledGate = _get_gates()
+    H, X, Ry, MultiControlledGateBuilder = _get_gates()
 
     # Uniform superposition over index
     for q in spec.index_qubits:
         circuit << (H, q)
 
-    # Controlled rotations per basis state
+    affine = _extract_affine_angles_for_two_controls(spec)
+    if affine is not None:
+        c0, c1, c2 = affine
+        q0, q1 = spec.index_qubits
+        a = spec.ancilla
+
+        if abs(c0) > 1e-12:
+            circuit << (Ry, a, c0)
+        _apply_single_controlled_ry(circuit, q0, a, c1)
+        _apply_single_controlled_ry(circuit, q1, a, c2)
+        return
+
+    # Generic fallback: exact pattern-controlled implementation
     for bits, theta in spec.patterns:
         _apply_controlled_ry_on_pattern(circuit, spec.index_qubits, spec.ancilla, theta, bits)
 
 
 def apply_Adag_from_spec(circuit, spec: ASpec):
-    """
+    r"""
     Append A^\dagger to `circuit`.
 
     Since A is a sequence of:
@@ -153,9 +212,24 @@ def apply_Adag_from_spec(circuit, spec: ASpec):
       followed by controlled Ry(theta_i),
     we implement the inverse by reversing the sequence and negating angles.
     """
-    H, X, Ry, ControlledGate = _get_gates()
+    H, X, Ry, MultiControlledGateBuilder = _get_gates()
 
-    # Inverse of controlled rotations: reverse order, angle -> -angle
+    affine = _extract_affine_angles_for_two_controls(spec)
+    if affine is not None:
+        c0, c1, c2 = affine
+        q0, q1 = spec.index_qubits
+        a = spec.ancilla
+
+        _apply_single_controlled_ry(circuit, q1, a, -c2)
+        _apply_single_controlled_ry(circuit, q0, a, -c1)
+        if abs(c0) > 1e-12:
+            circuit << (Ry, a, -c0)
+
+        for q in spec.index_qubits:
+            circuit << (H, q)
+        return
+
+    # Generic fallback: reverse order, angle -> -angle
     for bits, theta in reversed(spec.patterns):
         _apply_controlled_ry_on_pattern(circuit, spec.index_qubits, spec.ancilla, -theta, bits)
 

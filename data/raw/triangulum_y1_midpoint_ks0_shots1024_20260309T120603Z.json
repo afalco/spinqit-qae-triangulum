@@ -1,0 +1,43 @@
+{
+  "run_id": "triangulum_y1_midpoint_ks0_shots1024_20260309T120603Z",
+  "backend": "triangulum_nmr",
+  "nmr": {
+    "ip": "10.30.227.5",
+    "port": 55444,
+    "task_name": "qae_mlae",
+    "task_desc": "MLAE-style QAE experiment"
+  },
+  "y": 1.0,
+  "rule": "midpoint",
+  "ks": [
+    0
+  ],
+  "shots_per_k": 1024,
+  "p_hat": [
+    0.5361328125
+  ],
+  "successes": [
+    549
+  ],
+  "mle": {
+    "a_hat": 0.536132803672384,
+    "theta_hat": 0.8215624907066038,
+    "nll": 707.1065526286532
+  },
+  "integral": {
+    "I_hat": 0.536132803672384
+  },
+  "counts_per_k": [
+    {
+      "000": 163,
+      "001": 72,
+      "010": 67,
+      "011": 173,
+      "100": 119,
+      "101": 176,
+      "110": 168,
+      "111": 86
+    }
+  ],
+  "timestamp_utc": "20260309T120603Z"
+}

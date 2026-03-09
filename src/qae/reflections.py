@@ -5,43 +5,64 @@ from typing import Sequence
 
 
 def _get_gates():
-    from spinqit import X, Z, H, CCX  # type: ignore
-    return X, Z, H, CCX
+    from spinqit import X, Z, H, CX, CCX  # type: ignore
+    return X, Z, H, CX, CCX
 
 
 def apply_S_psi0(circuit, ancilla: int):
     """
-    Reflection marking 'good' states. Here good <=> ancilla == |1>.
-    Implement as a Z on the ancilla.
+    Reflection S_{psi0}: phase flip on the ancilla |1> component.
+    Implemented as Z on ancilla.
     """
-    X, Z, H, CCX = _get_gates()
+    X, Z, H, CX, CCX = _get_gates()
     circuit << (Z, ancilla)
 
 
 def apply_S0(circuit, qubits: Sequence[int]):
     """
-    Reflection about |0...0>. For Triangulum we assume exactly 3 qubits.
+    Reflection about |0...0>:
+        S0 = I - 2|0...0><0...0|
 
-    Implementation:
+    Up to a global phase, this is implemented by:
       X on all qubits
-      CCZ on all qubits (via H on target + CCX + H)
+      multi-controlled Z on the all-ones state
       X on all qubits
+
+    For 3 qubits (Triangulum), CCZ is implemented as H on target, CCX, H on target.
     """
-    X, Z, H, CCX = _get_gates()
+    X, Z, H, CX, CCX = _get_gates()
 
-    if len(qubits) != 3:
-        raise ValueError("apply_S0 currently supports exactly 3 qubits (Triangulum).")
+    qs = list(qubits)
+    n = len(qs)
 
-    q0, q1, q2 = qubits  # use q2 as target for CCZ via CCX
-    circuit << (X, q0)
-    circuit << (X, q1)
-    circuit << (X, q2)
+    if n == 0:
+        return
 
-    # CCZ(q0,q1,q2) = H(q2) CCX(q0,q1->q2) H(q2)
-    circuit << (H, q2)
-    circuit << (CCX, q0, q1, q2)
-    circuit << (H, q2)
+    for q in qs:
+        circuit << (X, q)
 
-    circuit << (X, q0)
-    circuit << (X, q1)
-    circuit << (X, q2)
+    if n == 1:
+        circuit << (Z, qs[0])
+
+    elif n == 2:
+        # CZ = H(target) CX(control,target) H(target)
+        q0, q1 = qs
+        circuit << (H, q1)
+        circuit << (CX, (q0, q1))
+        circuit << (H, q1)
+
+    elif n == 3:
+        # CCZ = H(target) CCX(control1,control2,target) H(target)
+        q0, q1, q2 = qs
+        circuit << (H, q2)
+        circuit << (CCX, (q0, q1, q2))
+        circuit << (H, q2)
+
+    else:
+        raise NotImplementedError(
+            "apply_S0 currently supports up to 3 qubits. "
+            "For more qubits, build a general multi-controlled Z."
+        )
+
+    for q in qs:
+        circuit << (X, q)

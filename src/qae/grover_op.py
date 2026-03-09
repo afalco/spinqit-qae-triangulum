@@ -13,7 +13,7 @@ def apply_Q_iteration(circuit, spec: ASpec) -> None:
 
     where:
       - S_{psi0} marks "good" states (ancilla == |1>) and is implemented as Z on the ancilla,
-      - S0 is the reflection about |000> on the full 3-qubit register (X..CCZ..X),
+      - S0 is the reflection about |000> on the full 3-qubit register,
       - A is the state-preparation operator for the numerical integration instance.
 
     Convention:

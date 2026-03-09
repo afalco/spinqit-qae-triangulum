@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import glob
 import json
 import os
 from typing import Any, Dict, List
-
-import pandas as pd
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,6 +26,19 @@ def ensure_dir(path: str) -> None:
 def load_json(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def write_csv(rows: List[Dict[str, Any]], out_csv: str) -> None:
+    if not rows:
+        with open(out_csv, "w", encoding="utf-8", newline="") as f:
+            pass
+        return
+
+    fieldnames = list(rows[0].keys())
+    with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main() -> None:
@@ -88,16 +100,14 @@ def main() -> None:
                 }
             )
 
-    df = pd.DataFrame(rows)
-    df_k = pd.DataFrame(rows_k)
-
     out_summary = os.path.join(args.outdir, "summary_runs.csv")
     out_by_k = os.path.join(args.outdir, "summary_by_k.csv")
-    df.to_csv(out_summary, index=False)
-    df_k.to_csv(out_by_k, index=False)
+
+    write_csv(rows, out_summary)
+    write_csv(rows_k, out_by_k)
 
     print(f"[OK] Wrote:\n  {out_summary}\n  {out_by_k}")
-    print(f"[INFO] Runs: {len(df)}  (k-rows: {len(df_k)})")
+    print(f"[INFO] Runs: {len(rows)}  (k-rows: {len(rows_k)})")
 
 
 if __name__ == "__main__":
