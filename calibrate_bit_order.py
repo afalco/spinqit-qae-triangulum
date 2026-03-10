@@ -131,13 +131,50 @@ def make_backend(args: argparse.Namespace):
 def run_circuit(engine, conf, circ, shots: int):
     if conf is None:
         # simulator
+
+        # 1) direct execute(circ, shots=...)
         try:
             return engine.execute(circ, shots=shots)
         except Exception:
+            pass
+
+        # 2) direct execute(circ) without shots
+        try:
+            return engine.execute(circ)
+        except Exception:
+            pass
+
+        # 3) compile + execute(compiled, config/shots) depending on local SpinQit API
+        try:
+            from spinqit import get_compiler  # type: ignore
+
+            compiler = get_compiler()
+            compiled = compiler.compile(circ, 0)
+
+            # common patterns seen across versions
             try:
-                return engine.run(circ, shots=shots)
-            except Exception as e:
-                raise RuntimeError("Could not execute circuit on simulator backend.") from e
+                return engine.execute(compiled, shots)
+            except Exception:
+                pass
+
+            try:
+                return engine.execute(compiled, shots=shots)
+            except Exception:
+                pass
+
+            try:
+                return engine.execute(compiled)
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+
+        raise RuntimeError(
+            "Could not execute circuit on simulator backend. "
+            "Your local SpinQit version likely requires a different simulator invocation."
+        )
+
     else:
         # Triangulum
         try:
@@ -147,7 +184,6 @@ def run_circuit(engine, conf, circ, shots: int):
                 return engine.run(circ, conf, shots=shots)
             except Exception as e:
                 raise RuntimeError("Could not execute circuit on Triangulum backend.") from e
-
 
 def infer_order(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
