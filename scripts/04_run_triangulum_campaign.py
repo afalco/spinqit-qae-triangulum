@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--ancilla-bit-index-from-right",
         type=int,
-        default=2,
+        default=0,
         help="Ancilla bit index from the right in returned bitstrings.",
     )
     p.add_argument(

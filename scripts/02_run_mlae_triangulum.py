@@ -47,10 +47,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--ancilla-bit-index-from-right",
         type=int,
-        default=2,
+        default=0,
         help=(
             "Which bit (from the right) corresponds to the ancilla in returned bitstrings. "
-            "For 3 qubits with ancilla qubit index=2, a common default is 2. "
+            "For 3 qubits with ancilla qubit index=0, a common default is 0. "
             "Adjust if your NMR backend bit ordering differs."
         ),
     )
