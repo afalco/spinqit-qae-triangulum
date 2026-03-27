@@ -1,4 +1,5 @@
-#04_run_triangulum_campaign.py
+# scripts/04_run_triangulum_campaign.py
+
 from __future__ import annotations
 
 import argparse
@@ -12,22 +13,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.qae.state_prep import build_A_spec, exact_integral, is_affine_hardware_friendly
+from src.qae.integrands import OFFICIAL_GFUNCS, exact_integral, integrand_label, integrand_slug
+from src.qae.state_prep import build_A_spec, is_affine_hardware_friendly
+
 
 DEFAULT_RULES = ("left", "midpoint", "right")
 DEFAULT_KS = "0,1"
 DEFAULT_SHOTS = 1024
-DEFAULT_GFUNC = "sin2_pi"
-GFUNC_CHOICES = ["sin2_pi", "x", "x2", "sqrt_x", "exp_minus_x", "parabola"]
+DEFAULT_GFUNC = "sin^2(pi*x)"
+GFUNC_CHOICES = list(OFFICIAL_GFUNCS)
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
-            "Run a depth-constrained Triangulum MLAE campaign for the three quadrature rules "
-            "(left, midpoint, right), then aggregate the results and compute the Simpson-style combination."
+            "Run a depth-constrained Triangulum MLAE campaign for multiple quadrature rules, "
+            "then aggregate the results and compute the Simpson-style combination when available."
         )
     )
+
     p.add_argument("--ip", type=str, required=True, help="Triangulum IP address.")
     p.add_argument("--port", type=int, default=55444, help="Triangulum port.")
     p.add_argument("--account", type=str, required=True, help="Triangulum account/username.")
@@ -39,8 +43,24 @@ def parse_args() -> argparse.Namespace:
         default="Depth-constrained MLAE campaign on Triangulum",
         help="Task description.",
     )
+
     p.add_argument("--y", type=float, default=1.0, help="Upper limit y in [0,1].")
-    p.add_argument("--gfunc", type=str, default=DEFAULT_GFUNC, choices=GFUNC_CHOICES, help="Target function g(x).")
+
+    group = p.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--gfunc",
+        type=str,
+        default=None,
+        choices=GFUNC_CHOICES,
+        help="Official target function g(x).",
+    )
+    group.add_argument(
+        "--expr",
+        type=str,
+        default=None,
+        help="Custom expression in x for exploratory campaigns.",
+    )
+
     p.add_argument("--ks", type=str, default=DEFAULT_KS, help="Comma-separated k values, typically '0,1'.")
     p.add_argument("--shots", type=int, default=DEFAULT_SHOTS, help="Shots per rule.")
     p.add_argument(
@@ -107,7 +127,7 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def write_csv(rows: list[dict[str, Any]], out_csv: Path) -> None:
     if not rows:
-        with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        with open(out_csv, "w", encoding="utf-8", newline=""):
             pass
         return
 
@@ -129,28 +149,37 @@ def find_newest_matching_json(raw_outdir: Path, prefix: str) -> Path:
     return matches[-1]
 
 
-def check_affinity_per_rule(y: float, gfunc: str, rules: tuple[str, ...]) -> dict[str, bool]:
+def check_affinity_per_rule(
+    y: float,
+    rules: tuple[str, ...],
+    gfunc: str | None = None,
+    expr: str | None = None,
+) -> dict[str, bool]:
     result: dict[str, bool] = {}
     for rule in rules:
-        spec = build_A_spec(y=y, rule=rule, gfunc=gfunc)
+        spec = build_A_spec(y=y, rule=rule, gfunc=gfunc, expr=expr)
         result[rule] = is_affine_hardware_friendly(spec)
     return result
 
 
-def abort_if_not_affine_friendly(y: float, gfunc: str, rules: tuple[str, ...]) -> None:
-    affinity = check_affinity_per_rule(y=y, gfunc=gfunc, rules=rules)
+def abort_if_not_affine_friendly(
+    y: float,
+    rules: tuple[str, ...],
+    gfunc: str | None = None,
+    expr: str | None = None,
+) -> None:
+    affinity = check_affinity_per_rule(y=y, rules=rules, gfunc=gfunc, expr=expr)
     bad_rules = [rule for rule, ok in affinity.items() if not ok]
-
     if bad_rules:
         details = ", ".join(f"{rule}=non-affine" for rule in bad_rules)
         all_details = ", ".join(f"{rule}={'affine' if ok else 'non-affine'}" for rule, ok in affinity.items())
+        label = integrand_label(gfunc=gfunc, expr=expr)
         raise SystemExit(
-            "[ABORT] The requested campaign was not launched because the function is not "
-            f"affine-friendly for all requested rules. gfunc='{gfunc}', y={y}. "
+            "[ABORT] The requested campaign was not launched because the integrand is not "
+            f"affine-friendly for all requested rules. integrand={label!r}, y={y}. "
             f"Failing rules: {details}. Full check: {all_details}. "
             "Under the current Triangulum implementation, the three-rule campaign should only be run "
-            "when all requested rules are affine-friendly. "
-            "Use scripts.00_check_function_affinity per rule and/or restrict hardware runs to the midpoint rule."
+            "when all requested rules are affine-friendly."
         )
 
 
@@ -158,10 +187,8 @@ def run_single_rule(args: argparse.Namespace, rule: str) -> Path:
     raw_outdir = Path(args.raw_outdir)
     ensure_dir(str(raw_outdir))
 
-    prefix = (
-        f"triangulum_{args.gfunc}_y{args.y:g}_{rule}_"
-        f"ks{args.ks.replace(',', '-')}_shots{args.shots}_"
-    )
+    slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
+    prefix = f"triangulum_{slug}_y{args.y:g}_{rule}_ks{args.ks.replace(',', '-')}_shots{args.shots}_"
 
     if args.reuse_existing:
         try:
@@ -171,7 +198,7 @@ def run_single_rule(args: argparse.Namespace, rule: str) -> Path:
         except FileNotFoundError:
             print(f"[REUSE] No existing JSON found for rule='{rule}'. Launching hardware run.")
 
-    task_name = f"{args.task_prefix}_{args.gfunc}_{rule}"
+    task_name = f"{args.task_prefix}_{slug}_{rule}"
     cmd = [
         args.python_executable,
         "-m",
@@ -190,8 +217,6 @@ def run_single_rule(args: argparse.Namespace, rule: str) -> Path:
         args.task_desc,
         "--y",
         str(args.y),
-        "--gfunc",
-        args.gfunc,
         "--rule",
         rule,
         "--ks",
@@ -203,6 +228,11 @@ def run_single_rule(args: argparse.Namespace, rule: str) -> Path:
         "--outdir",
         str(raw_outdir),
     ]
+
+    if args.gfunc is not None:
+        cmd.extend(["--gfunc", args.gfunc])
+    else:
+        cmd.extend(["--expr", args.expr])
 
     print(f"[RUN] Launching rule='{rule}'")
     masked_cmd = ["***" if x == args.password else x for x in cmd]
@@ -218,151 +248,118 @@ def classify_function_for_current_hardware(hardware_friendly: bool | None) -> st
     return "hardware-friendly" if hardware_friendly else "simulation-ready"
 
 
-def summarize_campaign(json_paths: dict[str, Path], y: float, gfunc: str) -> dict[str, Any]:
+def summarize_campaign(
+    json_paths: dict[str, Path],
+    y: float,
+    gfunc: str | None = None,
+    expr: str | None = None,
+) -> dict[str, Any]:
     records: dict[str, dict[str, Any]] = {}
     for rule, path in json_paths.items():
         records[rule] = load_json(path)
 
-    missing = [r for r in DEFAULT_RULES if r not in records]
-    if missing:
-        raise ValueError(f"Cannot compute full campaign summary. Missing rules: {missing}")
+    per_rule = {}
+    for rule, obj in records.items():
+        per_rule[rule] = {
+            "run_id": obj.get("run_id"),
+            "I_hat": (obj.get("integral") or {}).get("I_hat"),
+            "a_hat": (obj.get("mle") or {}).get("a_hat"),
+            "exact_integral": obj.get("exact_integral"),
+            "abs_error_global": obj.get("abs_error_global"),
+            "hardware_friendly_affine": obj.get("hardware_friendly_affine"),
+        }
 
-    i_left = float(records["left"]["integral"]["I_hat"])
-    i_mid = float(records["midpoint"]["integral"]["I_hat"])
-    i_right = float(records["right"]["integral"]["I_hat"])
+    simpson_hat = None
+    if all(r in per_rule for r in ("left", "midpoint", "right")):
+        il = per_rule["left"]["I_hat"]
+        im = per_rule["midpoint"]["I_hat"]
+        ir = per_rule["right"]["I_hat"]
+        if il is not None and im is not None and ir is not None:
+            simpson_hat = (float(il) + 4.0 * float(im) + float(ir)) / 6.0
 
-    i_exact = exact_integral(y, gfunc)
-    i_simpson = (i_left + 4.0 * i_mid + i_right) / 6.0
-
-    hardware_friendly = records["left"].get("hardware_friendly_affine", None)
-    function_class = classify_function_for_current_hardware(hardware_friendly)
+    exact_val = exact_integral(y, gfunc=gfunc, expr=expr)
 
     return {
-        "campaign_id": f"triangulum_campaign_{gfunc}_y{y:g}_{current_utc_stamp()}",
-        "y": y,
+        "integrand_label": integrand_label(gfunc=gfunc, expr=expr),
         "gfunc": gfunc,
-        "ks": records["left"].get("ks"),
-        "shots_per_k": records["left"].get("shots_per_k"),
-        "I_exact": i_exact,
-        "hardware_friendly_affine": hardware_friendly,
-        "function_class": function_class,
-        "rules": {
-            "left": {
-                "run_id": records["left"].get("run_id"),
-                "I_hat": i_left,
-                "a_hat": records["left"].get("mle", {}).get("a_hat"),
-                "abs_error": (abs(i_left - i_exact) if i_exact is not None else None),
-                "source_json": os.path.basename(json_paths["left"]),
-            },
-            "midpoint": {
-                "run_id": records["midpoint"].get("run_id"),
-                "I_hat": i_mid,
-                "a_hat": records["midpoint"].get("mle", {}).get("a_hat"),
-                "abs_error": (abs(i_mid - i_exact) if i_exact is not None else None),
-                "source_json": os.path.basename(json_paths["midpoint"]),
-            },
-            "right": {
-                "run_id": records["right"].get("run_id"),
-                "I_hat": i_right,
-                "a_hat": records["right"].get("mle", {}).get("a_hat"),
-                "abs_error": (abs(i_right - i_exact) if i_exact is not None else None),
-                "source_json": os.path.basename(json_paths["right"]),
-            },
-        },
-        "simpson": {
-            "I_hat": i_simpson,
-            "abs_error": (abs(i_simpson - i_exact) if i_exact is not None else None),
-            "formula": "(I_left + 4*I_midpoint + I_right)/6",
-        },
+        "expr": expr,
+        "y": y,
+        "rules": list(json_paths.keys()),
+        "per_rule": per_rule,
+        "simpson_style_combination": simpson_hat,
+        "exact_integral": exact_val,
+        "abs_error_simpson": (abs(simpson_hat - exact_val) if simpson_hat is not None and exact_val is not None else None),
+        "all_rules_hardware_friendly": all(
+            bool((obj.get("hardware_friendly_affine")))
+            for obj in records.values()
+        ),
     }
-
-
-def flatten_campaign_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    i_exact = summary["I_exact"]
-
-    for rule in DEFAULT_RULES:
-        rec = summary["rules"][rule]
-        rows.append(
-            {
-                "campaign_id": summary["campaign_id"],
-                "kind": "rule",
-                "gfunc": summary["gfunc"],
-                "function_class": summary["function_class"],
-                "hardware_friendly_affine": summary["hardware_friendly_affine"],
-                "rule": rule,
-                "I_exact": i_exact,
-                "I_hat": rec["I_hat"],
-                "abs_error": rec["abs_error"],
-                "a_hat": rec["a_hat"],
-                "run_id": rec["run_id"],
-                "source_json": rec["source_json"],
-            }
-        )
-
-    rows.append(
-        {
-            "campaign_id": summary["campaign_id"],
-            "kind": "combined",
-            "gfunc": summary["gfunc"],
-            "function_class": summary["function_class"],
-            "hardware_friendly_affine": summary["hardware_friendly_affine"],
-            "rule": "simpson",
-            "I_exact": i_exact,
-            "I_hat": summary["simpson"]["I_hat"],
-            "abs_error": summary["simpson"]["abs_error"],
-            "a_hat": "",
-            "run_id": "",
-            "source_json": "",
-        }
-    )
-    return rows
 
 
 def main() -> None:
     args = parse_args()
-    rules = tuple(x.strip() for x in args.rules.split(",") if x.strip())
-    if set(rules) != set(DEFAULT_RULES):
-        raise SystemExit("This campaign script currently expects exactly the three rules: left, midpoint, right.")
+    rules = tuple(r.strip() for r in args.rules.split(",") if r.strip())
+    if not rules:
+        raise SystemExit("No rules requested.")
 
-    # Pre-check before any hardware execution
-    abort_if_not_affine_friendly(y=args.y, gfunc=args.gfunc, rules=rules)
+    abort_if_not_affine_friendly(
+        y=args.y,
+        rules=rules,
+        gfunc=args.gfunc,
+        expr=args.expr,
+    )
 
-    ensure_dir(args.raw_outdir)
-    ensure_dir(args.processed_outdir)
-
-    json_paths: dict[str, Path] = {}
+    raw_paths: dict[str, Path] = {}
     for idx, rule in enumerate(rules):
-        json_paths[rule] = run_single_rule(args, rule)
-        if args.pause_seconds > 0 and idx < len(rules) - 1:
+        raw_paths[rule] = run_single_rule(args, rule)
+        if idx + 1 < len(rules) and args.pause_seconds > 0:
             time.sleep(args.pause_seconds)
 
-    summary = summarize_campaign(json_paths, y=args.y, gfunc=args.gfunc)
-    rows = flatten_campaign_rows(summary)
+    summary = summarize_campaign(
+        json_paths=raw_paths,
+        y=args.y,
+        gfunc=args.gfunc,
+        expr=args.expr,
+    )
 
+    ensure_dir(args.processed_outdir)
     stamp = current_utc_stamp()
-    out_json = (
-        Path(args.processed_outdir)
-        / f"campaign_summary_{args.gfunc}_y{args.y:g}_ks{args.ks.replace(',', '-')}_shots{args.shots}_{stamp}.json"
-    )
-    out_csv = (
-        Path(args.processed_outdir)
-        / f"campaign_summary_{args.gfunc}_y{args.y:g}_ks{args.ks.replace(',', '-')}_shots{args.shots}_{stamp}.csv"
-    )
+    slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
+    base = f"triangulum_campaign_{slug}_y{args.y:g}_rules{'-'.join(rules)}_ks{args.ks.replace(',', '-')}_shots{args.shots}_{stamp}"
+
+    out_json = Path(args.processed_outdir) / f"{base}.json"
+    out_csv = Path(args.processed_outdir) / f"{base}.csv"
 
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
+
+    rows: list[dict[str, Any]] = []
+    for rule in rules:
+        pr = summary["per_rule"][rule]
+        rows.append(
+            {
+                "integrand_label": summary["integrand_label"],
+                "gfunc": summary["gfunc"],
+                "expr": summary["expr"],
+                "y": summary["y"],
+                "rule": rule,
+                "run_id": pr["run_id"],
+                "I_hat": pr["I_hat"],
+                "a_hat": pr["a_hat"],
+                "exact_integral": pr["exact_integral"],
+                "abs_error_global": pr["abs_error_global"],
+                "hardware_friendly_affine": pr["hardware_friendly_affine"],
+                "simpson_style_combination": summary["simpson_style_combination"],
+                "abs_error_simpson": summary["abs_error_simpson"],
+                "timestamp_utc": stamp,
+            }
+        )
+
     write_csv(rows, out_csv)
 
-    print(f"[OK] Wrote:\n  {out_json}\n  {out_csv}")
-    print(
-        "[SUMMARY] "
-        f"gfunc={summary['gfunc']}  "
-        f"I_left={summary['rules']['left']['I_hat']:.9f}  "
-        f"I_midpoint={summary['rules']['midpoint']['I_hat']:.9f}  "
-        f"I_right={summary['rules']['right']['I_hat']:.9f}  "
-        f"I_simpson={summary['simpson']['I_hat']:.9f}"
-    )
+    print("[OK] Campaign summary written:")
+    print(f"  {out_json}")
+    print(f"  {out_csv}")
 
 
 if __name__ == "__main__":
