@@ -1,20 +1,18 @@
-#src/qae/state_prep.py
+# src/qae/state_prep.py
+
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from typing import List, Literal, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
+from .integrands import (
+    OfficialGFunc,
+    exact_integral,
+    g_value,
+    official_closed_form_theta,
+    theta_from_value,
+)
 from .quadrature import Rule, grid_points
-
-GFunc = Literal[
-    "sin2_pi",
-    "x",
-    "x2",
-    "sqrt_x",
-    "exp_minus_x",
-    "parabola",
-]
 
 
 @dataclass(frozen=True)
@@ -24,74 +22,44 @@ class ASpec:
     patterns: Tuple[Tuple[Tuple[int, ...], float], ...]
 
 
-def _clip01(v: float) -> float:
-    return min(max(v, 0.0), 1.0)
-
-
-def _g_value(x: float, gfunc: GFunc) -> float:
-    if gfunc == "sin2_pi":
-        return math.sin(math.pi * x) ** 2
-    if gfunc == "x":
-        return x
-    if gfunc == "x2":
-        return x**2
-    if gfunc == "sqrt_x":
-        return math.sqrt(x)
-    if gfunc == "exp_minus_x":
-        return math.exp(-x)
-    if gfunc == "parabola":
-        return 4.0 * x * (1.0 - x)
-    raise ValueError(f"Unknown gfunc: {gfunc}")
-
-
-def exact_integral(y: float, gfunc: GFunc) -> float | None:
-    if gfunc == "sin2_pi":
-        return 0.5 * y - math.sin(2.0 * math.pi * y) / (4.0 * math.pi)
-    if gfunc == "x":
-        return 0.5 * y**2
-    if gfunc == "x2":
-        return y**3 / 3.0
-    if gfunc == "sqrt_x":
-        return (2.0 / 3.0) * y ** 1.5
-    if gfunc == "exp_minus_x":
-        return 1.0 - math.exp(-y)
-    if gfunc == "parabola":
-        return 2.0 * y**2 - (4.0 / 3.0) * y**3
-    return None
-
-
 def build_A_spec(
     y: float,
     n_index_qubits: int = 2,
     rule: Rule = "midpoint",
-    gfunc: GFunc = "sin2_pi",
+    gfunc: OfficialGFunc | None = "sin^2(pi*x)",
+    expr: str | None = None,
     index_qubits: Sequence[int] = (0, 1),
     ancilla: int = 2,
 ) -> ASpec:
     if len(index_qubits) != n_index_qubits:
         raise ValueError("index_qubits length must match n_index_qubits.")
+
     grid = grid_points(y=y, n=n_index_qubits, rule=rule)
     m = 2**n_index_qubits
-
     patterns: List[Tuple[Tuple[int, ...], float]] = []
+
     for i in range(m):
         bits = tuple((i >> (n_index_qubits - 1 - b)) & 1 for b in range(n_index_qubits))
         x_i = grid.points[i]
 
-        if gfunc == "sin2_pi":
-            theta = 2.0 * math.pi * x_i
-        else:
-            gx = _clip01(_g_value(x_i, gfunc))
-            theta = 2.0 * math.asin(math.sqrt(gx))
+        theta = official_closed_form_theta(x_i, gfunc=gfunc)
+        if theta is None:
+            gx = g_value(x_i, gfunc=gfunc, expr=expr)
+            theta = theta_from_value(gx)
 
         patterns.append((bits, theta))
 
-    return ASpec(index_qubits=tuple(index_qubits), ancilla=ancilla, patterns=tuple(patterns))
+    return ASpec(
+        index_qubits=tuple(index_qubits),
+        ancilla=ancilla,
+        patterns=tuple(patterns),
+    )
 
 
 def _get_gates():
     from spinqit import H, X, Ry  # type: ignore
     from spinqit.primitive import MultiControlledGateBuilder  # type: ignore
+
     return H, X, Ry, MultiControlledGateBuilder
 
 
@@ -127,7 +95,7 @@ def _apply_single_controlled_ry(circuit, control: int, target: int, theta: float
     if abs(theta) < 1e-12:
         return
 
-    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+    _, _, Ry, MultiControlledGateBuilder = _get_gates()
     c_ry = MultiControlledGateBuilder(1, Ry, [theta]).to_gate()
     circuit << (c_ry, (control, target))
 
@@ -139,7 +107,7 @@ def _apply_controlled_ry_on_pattern(
     theta: float,
     bits: Tuple[int, ...],
 ):
-    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+    _, X, Ry, MultiControlledGateBuilder = _get_gates()
 
     flipped = []
     for q, b in zip(controls, bits):
@@ -156,7 +124,7 @@ def _apply_controlled_ry_on_pattern(
 
 
 def apply_A_from_spec(circuit, spec: ASpec):
-    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+    H, _, Ry, _ = _get_gates()
 
     for q in spec.index_qubits:
         circuit << (H, q)
@@ -178,7 +146,7 @@ def apply_A_from_spec(circuit, spec: ASpec):
 
 
 def apply_Adag_from_spec(circuit, spec: ASpec):
-    H, X, Ry, MultiControlledGateBuilder = _get_gates()
+    H, _, Ry, _ = _get_gates()
 
     affine = _extract_affine_angles_for_two_controls(spec)
     if affine is not None:

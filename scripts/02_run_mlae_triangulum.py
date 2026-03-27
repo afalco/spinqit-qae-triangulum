@@ -1,4 +1,5 @@
 # scripts/02_run_mlae_triangulum.py
+
 from __future__ import annotations
 
 import argparse
@@ -8,22 +9,20 @@ import os
 from datetime import datetime, timezone
 
 from src.backends.nmr_triangulum import TriangulumBackend, TriangulumConfig
+from src.qae.integrands import OFFICIAL_GFUNCS, exact_integral, integrand_label, integrand_slug
 from src.qae.mlae import run_mlae
-from src.qae.postprocess import mle_amplitude, amplitude_to_integral_report
-from src.qae.state_prep import (
-    build_A_spec,
-    exact_integral,
-    is_affine_hardware_friendly,
-)
+from src.qae.postprocess import amplitude_to_integral_report, mle_amplitude
+from src.qae.state_prep import build_A_spec, is_affine_hardware_friendly
 
-GFUNC_CHOICES = ["sin2_pi", "x", "x2", "sqrt_x", "exp_minus_x", "parabola"]
+
+GFUNC_CHOICES = list(OFFICIAL_GFUNCS)
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Run MLAE-style QAE numerical-integration demo on SpinQ Triangulum (NMR) via SpinQit."
     )
-    # NMR connection
+
     p.add_argument("--ip", type=str, required=True, help="Triangulum IP address.")
     p.add_argument("--port", type=int, default=55444, help="Triangulum port (default 55444).")
     p.add_argument("--account", type=str, required=True, help="Triangulum account/username.")
@@ -31,26 +30,30 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--task-name", type=str, default="qae_mlae", help="Task name in NMR backend.")
     p.add_argument("--task-desc", type=str, default="MLAE-style QAE experiment", help="Task description in NMR backend.")
 
-    # Experiment parameters
     p.add_argument("--y", type=float, default=1.0, help="Upper limit y in [0,1] for I(y)=∫_0^y g(x) dx.")
-    p.add_argument(
+
+    group = p.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "--gfunc",
         type=str,
-        default="sin2_pi",
         choices=GFUNC_CHOICES,
-        help="Target function g(x).",
+        help="Official target function g(x).",
     )
+    group.add_argument(
+        "--expr",
+        type=str,
+        help="Custom expression in x for exploratory runs.",
+    )
+
     p.add_argument("--rule", type=str, default="midpoint", choices=["left", "right", "midpoint"])
     p.add_argument("--ks", type=str, default="0,1,2", help="Comma-separated k values, e.g. '0,1,2'.")
     p.add_argument("--shots", type=int, default=4096, help="Shots per k circuit.")
-
     p.add_argument(
         "--ancilla-bit-index-from-right",
         type=int,
         default=0,
         help=(
             "Which bit (from the right) corresponds to the ancilla in returned bitstrings. "
-            "For 3 qubits with ancilla qubit index=0, a common default is 0. "
             "Adjust if your NMR backend bit ordering differs."
         ),
     )
@@ -64,7 +67,7 @@ def ensure_dir(path: str) -> None:
 
 def write_csv(rows: list[dict], out_csv: str) -> None:
     if not rows:
-        with open(out_csv, "w", encoding="utf-8", newline="") as f:
+        with open(out_csv, "w", encoding="utf-8", newline=""):
             pass
         return
 
@@ -102,14 +105,14 @@ def main() -> None:
         shots=args.shots,
         ancilla_bit_index_from_right=args.ancilla_bit_index_from_right,
         gfunc=args.gfunc,
+        expr=args.expr,
     )
 
-    spec = build_A_spec(y=args.y, rule=args.rule, gfunc=args.gfunc)
-    i_exact = exact_integral(args.y, args.gfunc)
+    spec = build_A_spec(y=args.y, rule=args.rule, gfunc=args.gfunc, expr=args.expr)
+    i_exact = exact_integral(args.y, gfunc=args.gfunc, expr=args.expr)
     hardware_friendly = is_affine_hardware_friendly(spec)
     function_class = classify_function_for_current_hardware(hardware_friendly)
 
-    # Convert counts -> successes
     successes = []
     for counts in rr.counts_per_k:
         succ = 0
@@ -123,15 +126,12 @@ def main() -> None:
         successes.append(succ)
 
     shots_vec = [rr.shots] * len(rr.ks)
-
     mle = mle_amplitude(rr.ks, successes, shots_vec)
     report = amplitude_to_integral_report(rr.y, mle.a_hat)
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_id = (
-        f"triangulum_{args.gfunc}_y{args.y:g}_{args.rule}_"
-        f"ks{'-'.join(map(str, ks))}_shots{args.shots}_{stamp}"
-    )
+    slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
+    run_id = f"triangulum_{slug}_y{args.y:g}_{args.rule}_ks{'-'.join(map(str, ks))}_shots{args.shots}_{stamp}"
 
     ensure_dir(args.outdir)
     out_json = os.path.join(args.outdir, f"{run_id}.json")
@@ -146,15 +146,23 @@ def main() -> None:
             "task_name": args.task_name,
             "task_desc": args.task_desc,
         },
-        "y": rr.y,
+        "integrand_label": integrand_label(gfunc=args.gfunc, expr=args.expr),
         "gfunc": rr.gfunc,
+        "expr": rr.expr,
+        "y": rr.y,
         "rule": rr.rule,
         "ks": list(rr.ks),
         "shots_per_k": rr.shots,
         "p_hat": list(rr.p_hat),
         "successes": successes,
-        "mle": {"a_hat": mle.a_hat, "theta_hat": mle.theta_hat, "nll": mle.nll},
-        "integral": {"I_hat": report.I_hat},
+        "mle": {
+            "a_hat": mle.a_hat,
+            "theta_hat": mle.theta_hat,
+            "nll": mle.nll,
+        },
+        "integral": {
+            "I_hat": report.I_hat,
+        },
         "exact_integral": i_exact,
         "abs_error_global": (abs(report.I_hat - i_exact) if i_exact is not None else None),
         "hardware_friendly_affine": hardware_friendly,
@@ -166,15 +174,16 @@ def main() -> None:
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
-    # Flat CSV summary (one row per k)
     rows = []
     for k, p, succ in zip(rr.ks, rr.p_hat, successes):
         rows.append(
             {
                 "run_id": run_id,
                 "backend": "triangulum_nmr",
-                "y": rr.y,
+                "integrand_label": integrand_label(gfunc=args.gfunc, expr=args.expr),
                 "gfunc": rr.gfunc,
+                "expr": rr.expr,
+                "y": rr.y,
                 "function_class": function_class,
                 "hardware_friendly_affine": hardware_friendly,
                 "rule": rr.rule,
@@ -192,10 +201,11 @@ def main() -> None:
 
     write_csv(rows, out_csv)
 
+    label = integrand_label(gfunc=args.gfunc, expr=args.expr)
     print(f"[OK] Wrote:\n  {out_json}\n  {out_csv}")
     print(
-        f"[MLE] gfunc={args.gfunc}  a_hat={mle.a_hat:.6f}  I_hat={report.I_hat:.6f}"
-        + (f"  I_exact={i_exact:.6f}" if i_exact is not None else "")
+        f"[MLE] integrand={label!r} a_hat={mle.a_hat:.6f} I_hat={report.I_hat:.6f}"
+        + (f" I_exact={i_exact:.6f}" if i_exact is not None else "")
     )
 
 

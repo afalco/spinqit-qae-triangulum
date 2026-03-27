@@ -1,11 +1,13 @@
 # src/qae/mlae.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
 from .grover_op import apply_Q_iteration
-from .state_prep import ASpec, GFunc, build_A_spec, apply_A_from_spec
+from .integrands import OfficialGFunc
+from .state_prep import ASpec, apply_A_from_spec, build_A_spec
 
 
 @dataclass(frozen=True)
@@ -15,26 +17,18 @@ class RunResult:
     """
     y: float
     rule: str
-    gfunc: str
+    gfunc: str | None
+    expr: str | None
     ks: Tuple[int, ...]
     shots: int
-    counts_per_k: Tuple[Dict[str, int], ...]  # bitstring -> count
-    p_hat: Tuple[float, ...]                  # empirical Pr(ancilla=1) per k
+    counts_per_k: Tuple[Dict[str, int], ...]
+    p_hat: Tuple[float, ...]
 
 
-def _extract_ancilla_1_prob(counts: Dict[str, int], ancilla_bit_index_from_right: int) -> float:
-    """
-    Extract Pr(ancilla=1) from measurement counts.
-
-    IMPORTANT:
-      Bitstring ordering (endianness) may differ across SpinQit backends.
-      `ancilla_bit_index_from_right` is the position of the ancilla bit when counting
-      from the rightmost character of the returned bitstring:
-        0 = rightmost bit, 1 = second from right, etc.
-
-      For a 3-qubit register with ancilla qubit index=2, a common default is 2,
-      but you should calibrate this if results look inconsistent.
-    """
+def _extract_ancilla_1_prob(
+    counts: Dict[str, int],
+    ancilla_bit_index_from_right: int,
+) -> float:
     total = sum(counts.values())
     if total <= 0:
         return 0.0
@@ -56,35 +50,27 @@ def build_circuit_for_k(spec: ASpec, k: int):
     Construct a SpinQit circuit for a given amplification index k:
         circuit = Q^k A |000>
     Then append measurement.
-
-    Returns a SpinQit Circuit instance.
     """
     from spinqit import Circuit  # type: ignore
 
     circ = Circuit()
 
-    # Allocate 3 qubits explicitly (Triangulum: 2 index + 1 ancilla)
     try:
         circ.allocateQubits(3)
     except Exception:
-        # Some SpinQit versions may not throw; keep best-effort.
         pass
 
-    # Prepare A|000>
     apply_A_from_spec(circ, spec)
 
-    # Apply Q^k
     for _ in range(int(k)):
         apply_Q_iteration(circ, spec)
 
-    # Measure (API varies across versions; try common names)
     try:
         circ.measure_all()
     except Exception:
         try:
             circ.measure(range(3))
         except Exception:
-            # If your SpinQit uses a different measurement call, adapt here.
             pass
 
     return circ
@@ -99,28 +85,15 @@ def run_mlae(
     ancilla_qubit: int = 2,
     index_qubits: Sequence[int] = (0, 1),
     ancilla_bit_index_from_right: int = 2,
-    gfunc: GFunc = "sin2_pi",
+    gfunc: OfficialGFunc | None = "sin^2(pi*x)",
+    expr: str | None = None,
 ) -> RunResult:
-    """
-    Execute MLAE-style runs for each k in `ks` on the provided backend wrapper.
-
-    The `backend` object must expose:
-        run(circuit, shots=...) -> counts
-    where counts is a dict: {bitstring: count}, or a result object containing such counts.
-
-    Parameters:
-      - y: integral upper limit in [0,1]
-      - rule: 'left' | 'right' | 'midpoint'
-      - gfunc: target function identifier
-      - ks: list of amplification indices
-      - shots: number of shots per circuit
-      - ancilla_bit_index_from_right: how to locate ancilla bit in returned bitstrings
-    """
     spec = build_A_spec(
         y=y,
         n_index_qubits=len(index_qubits),
-        rule=rule,  # type: ignore
+        rule=rule,  # type: ignore[arg-type]
         gfunc=gfunc,
+        expr=expr,
         index_qubits=index_qubits,
         ancilla=ancilla_qubit,
     )
@@ -132,7 +105,6 @@ def run_mlae(
         circ = build_circuit_for_k(spec, int(k))
         result = backend.run(circ, shots=shots)
 
-        # Normalize result -> dict counts
         if isinstance(result, dict):
             counts = result
         elif hasattr(result, "counts"):
@@ -151,7 +123,8 @@ def run_mlae(
     return RunResult(
         y=float(y),
         rule=str(rule),
-        gfunc=str(gfunc),
+        gfunc=None if gfunc is None else str(gfunc),
+        expr=None if expr is None else str(expr),
         ks=tuple(int(k) for k in ks),
         shots=int(shots),
         counts_per_k=tuple(counts_list),
