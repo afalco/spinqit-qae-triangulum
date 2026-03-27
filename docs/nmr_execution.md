@@ -1,43 +1,86 @@
 # NMR Execution Manual (Triangulum / SpinQit)
 
-This manual describes how to execute the MLAE-style QAE experiment in this repository on the **SpinQ Triangulum (3-qubit NMR QPU)**, following the same operational philosophy as the Grover–Rudolph practical repository: **scripts-first execution**, explicit backend configuration, and structured outputs in `data/`.
+This manual describes how to execute the MLAE-style QAE workflow in this repository on the **SpinQ Triangulum (3-qubit NMR QPU)** and on the **SpinQit simulator**, using the current integrand model based on `--gfunc` and `--expr`.
 
-Although the main target of this manual is **hardware execution on Triangulum**, the recommended workflow now also includes:
+The present version assumes:
 
-- `scripts/00_check_function_affinity.py` for pre-screening functions under the current depth-constrained hardware assumptions,
-- `scripts/01_run_mlae_sim.py` for simulator validation before sending a new function or configuration to hardware.
-
-This manual also reflects the current behavior of `scripts/04_run_triangulum_campaign.py`: before launching hardware, the campaign script performs a **rule-by-rule affine-friendliness check** and aborts if any requested rule is not compatible with the current compressed Triangulum path.
+- a scripts-first workflow;
+- explicit backend configuration;
+- raw artifacts in `data/raw/`;
+- processed summaries in `data/processed/`;
+- centralized integrand logic in `src/qae/integrands.py`.
 
 ---
 
 ## 1. Prerequisites
 
 ### 1.1 System requirements
+
 - Python 3.10+ recommended
 - Network access (LAN/VPN) to the Triangulum device
 - SpinQit installed and functional
 
-### 1.2 Repository layout (relevant parts)
-- `scripts/00_check_function_affinity.py`: diagnostic script to screen whether a function is a plausible hardware candidate
-- `scripts/01_run_mlae_sim.py`: simulator validation entrypoint
-- `scripts/02_run_mlae_triangulum.py`: main Triangulum execution entrypoint
-- `scripts/03_summarize_results.py`: merges raw JSON runs into CSV summaries
-- `scripts/04_run_triangulum_campaign.py`: optional three-rule campaign launcher with rule-by-rule affine pre-check
-- `data/raw/`: raw results (JSON + per-run CSV)
-- `data/processed/`: aggregated summaries
-- `src/backends/nmr_triangulum.py`: backend wrapper (`NMRConfig` + engine call)
+### 1.2 Relevant repository layout
+
+- `scripts/00_check_function_affinity.py`: affine-friendliness diagnostic for a selected integrand
+- `scripts/01_run_mlae_sim.py`: simulator execution entry point
+- `scripts/02_run_mlae_triangulum.py`: main Triangulum execution entry point
+- `scripts/03_summarize_results.py`: summary builder for raw JSON artifacts
+- `scripts/04_run_triangulum_campaign.py`: multi-rule campaign runner with affine pre-check
+- `src/qae/integrands.py`: official integrands, custom expression evaluation, exact integrals, labels/slugs
+- `src/qae/state_prep.py`: quadrature-to-angle encoding and state preparation
+- `src/backends/nmr_triangulum.py`: NMR backend wrapper
+- `data/raw/`: raw JSON and per-run CSV files
+- `data/processed/`: aggregated summaries and campaign outputs
 
 ---
 
-## 2. Environment Setup
+## 2. Integrands
+
+Exactly one of the following must be provided in the main scripts.
+
+### 2.1 Official reproducible cases: `--gfunc`
+
+The current official benchmark choices are:
+
+- `"1/4"`
+- `"sin^2(pi*x/2)"`
+- `"sin^2(pi*x)"`
+- `"x"`
+- `"x^2"`
+
+These are the intended reproducible cases for simulation, hardware runs, and campaign execution.
+
+### 2.2 Exploratory cases: `--expr`
+
+For direct experimentation, you may instead pass:
+
+```bash
+--expr "..."
+```
+
+Examples:
+
+```bash
+--expr "cos(pi*x)**2"
+--expr "4*x*(1-x)"
+--expr "sin(pi*x/3)**2"
+```
+
+Custom expressions are evaluated in a restricted mathematical environment.
+
+---
+
+## 3. Environment setup
 
 From the repository root:
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # macOS/Linux
-# .venv\Scripts\activate         # Windows PowerShell
+source .venv/bin/activate
+# On Windows PowerShell:
+# .venv\Scripts\activate
+
 pip install -U pip
 pip install -r requirements.txt
 ```
@@ -50,56 +93,56 @@ python -c "import spinqit; print('spinqit ok')"
 
 ---
 
-## 3. Connectivity Check (Triangulum Port 55444)
+## 4. Connectivity check
 
-Before running any experiment, verify that the device is reachable:
+Before running any hardware experiment, verify that the device is reachable:
 
 ```bash
 nc -vz -w 2 <TRIANGULUM_IP> 55444
 ```
 
-Expected output: `succeeded`.
+Expected outcome: a successful connection report.
 
 If this fails:
 
-- verify you are on the correct LAN/VPN,
-- verify routing (for example with `netstat -nr`),
-- confirm the port is correct (default is `55444`),
+- verify LAN/VPN access,
+- verify routing,
+- confirm the port,
 - check local firewall rules.
 
 ---
 
-## 4. Pre-Screening and Simulator Validation
+## 5. Recommended pre-screening workflow
 
-Under the current implementation, **not every function that works in simulation is suitable for Triangulum hardware**. The limiting factor is the line-depth budget and, more specifically, whether the 4-point angle table is affine on the 2-qubit index grid.
+Under the current implementation, not every function that works in simulation is suitable for direct NMR execution. The key issue is whether the induced 4-point angle table is affine-friendly on the 2-index-qubit grid.
 
-### 4.1 Affinity diagnostic
-Before launching hardware for a new function, run:
+### 5.1 Affinity diagnostic
 
-```bash
-python -m scripts.00_check_function_affinity --gfunc sin2_pi --y 1.0 --rule midpoint
-```
-
-or, for another supported function,
+For an official benchmark:
 
 ```bash
-python -m scripts.00_check_function_affinity --gfunc x --y 1.0 --rule midpoint
+python -m scripts.00_check_function_affinity --gfunc "sin^2(pi*x)" --y 1.0 --rule midpoint
 ```
 
-The script can also be used in exploratory mode:
+For an exploratory function:
 
 ```bash
 python -m scripts.00_check_function_affinity --expr "cos(pi*x)**2" --y 1.0 --rule midpoint
 ```
 
-This exploratory mode is intended only for screening. It does **not** imply that the full simulator or Triangulum execution pipeline can run that function automatically.
+This script classifies the current case as, for example:
 
-### 4.2 Simulator validation
-Before sending a new hardware-oriented configuration to Triangulum, validate it in the simulator:
+- `hardware-friendly`
+- `candidate (very close to affine)`
+- `simulation-ready / likely too deep for current Triangulum path`
+
+### 5.2 Simulator validation
+
+Before sending a new configuration to hardware, validate it in the simulator:
 
 ```bash
 python -m scripts.01_run_mlae_sim \
-  --gfunc sin2_pi \
+  --gfunc "x^2" \
   --y 1.0 \
   --rule midpoint \
   --ks 0,1,2 \
@@ -108,45 +151,44 @@ python -m scripts.01_run_mlae_sim \
   --outdir data/raw
 ```
 
-Under the current implementation, the simulator working default is:
+Exploratory example:
 
-```text
---ancilla-bit-index-from-right 0
+```bash
+python -m scripts.01_run_mlae_sim \
+  --expr "4*x*(1-x)" \
+  --y 1.0 \
+  --rule midpoint \
+  --ks 0,1,2 \
+  --shots 4096 \
+  --ancilla-bit-index-from-right 0 \
+  --outdir data/raw
 ```
-
-### 4.3 Current practical classification
-Based on the current implementation and tests:
-
-- **hardware-friendly under midpoint**: `sin2_pi`, `x`
-- **simulation-ready**: `x2`, `parabola`
-- **simulation-first**: `exp_minus_x`, `sqrt_x`
-
-This classification should **not** be interpreted as global compatibility across all quadrature rules. In particular, a function may be affine-friendly for `midpoint` and non-affine for `left` or `right`.
 
 ---
 
-## 5. Running on Triangulum (Main Command)
+## 6. Running on Triangulum
 
-### 5.1 Minimal recommended run (baseline)
+### 6.1 Minimal recommended hardware run
 
-This is the reference configuration intended to work under typical hardware constraints:
+A conservative baseline configuration is:
 
-- discretization: 2 index qubits (4 points)
-- ancilla: 1 qubit
-- amplification indices: $k = \{0,1\}$
-- rule: `midpoint`
-- `gfunc`: start with `sin2_pi` or `x`
-- `y`: 1.0
+- 2 index qubits (4-point grid)
+- 1 ancilla qubit
+- amplification indices `k = {0,1}`
+- `rule = midpoint`
+- moderate shot count
+
+Example with an official benchmark:
 
 ```bash
 python -m scripts.02_run_mlae_triangulum \
   --ip <TRIANGULUM_IP> \
   --port 55444 \
-  --account <USER> \
+  --account <ACCOUNT> \
   --password <PASSWORD> \
   --task-name qae_mlae_demo \
   --task-desc "MLAE-style QAE numerical integration (Triangulum)" \
-  --gfunc sin2_pi \
+  --gfunc "sin^2(pi*x)" \
   --y 1.0 \
   --rule midpoint \
   --ks 0,1 \
@@ -155,289 +197,232 @@ python -m scripts.02_run_mlae_triangulum \
   --outdir data/raw
 ```
 
-On success the script prints:
+Exploratory example:
 
-- the locations of the written files,
-- the estimated amplitude `a_hat`,
-- the estimated integral `I_hat`,
-- and, when available, the exact integral.
+```bash
+python -m scripts.02_run_mlae_triangulum \
+  --ip <TRIANGULUM_IP> \
+  --port 55444 \
+  --account <ACCOUNT> \
+  --password <PASSWORD> \
+  --task-name qae_mlae_expr \
+  --task-desc "Exploratory MLAE-style QAE numerical integration (Triangulum)" \
+  --expr "cos(pi*x)**2" \
+  --y 1.0 \
+  --rule midpoint \
+  --ks 0,1 \
+  --shots 1024 \
+  --ancilla-bit-index-from-right 2 \
+  --outdir data/raw
+```
 
-### 5.2 Output artifacts
-
-Each run generates two files under `data/raw/`:
-
-1. `triangulum_....json`  
-   Contains:
-   - backend metadata (`ip`, `port`, task),
-   - experiment parameters (`gfunc`, `y`, `rule`, `ks`, shots),
-   - raw bitstring counts for each $k$,
-   - MLE estimate `a_hat` and derived `I_hat`,
-   - exact integral when available,
-   - hardware-affinity metadata.
-
-2. `triangulum_....csv`  
-   Flat per-$k$ summary (one row per $k$) to facilitate quick plots.
+On success the script writes JSON and CSV artifacts and prints the estimated amplitude and integral.
 
 ---
 
-## 6. Important Practical Issue: Bitstring Ordering
+## 7. Output artifacts
+
+Each raw run generates two files under `data/raw/`:
+
+1. `triangulum_*.json`
+2. `triangulum_*.csv`
+
+These artifacts retain both:
+
+- `gfunc`
+- `expr`
+
+for traceability.
+
+Typical JSON fields include:
+
+- `run_id`
+- `backend`
+- `integrand_label`
+- `gfunc`
+- `expr`
+- `y`
+- `rule`
+- `ks`
+- `shots_per_k`
+- `p_hat`
+- `successes`
+- `mle`
+- `integral`
+- `exact_integral`
+- `abs_error_global`
+- `hardware_friendly_affine`
+- `function_class`
+
+---
+
+## 8. Bitstring ordering
 
 SpinQit backends may return measurement strings with different endianness conventions. This affects which bit corresponds to the ancilla.
 
 The scripts expose:
 
-- `--ancilla-bit-index-from-right`
+```text
+--ancilla-bit-index-from-right
+```
 
 Interpretation:
 
 - `0` = rightmost bit
 - `1` = second from right
-- `2` = third from right (common working default for Triangulum with ancilla as qubit 2)
+- `2` = third from right
 
-### 6.1 Quick calibration procedure
+A common working default for Triangulum with the ancilla on qubit 2 is:
 
-If you suspect the extracted probabilities are incorrect (for example `p_hat` always near 0 or 1), run the same command with three settings:
-
-```bash
-python -m scripts.02_run_mlae_triangulum ... --ancilla-bit-index-from-right 0
-python -m scripts.02_run_mlae_triangulum ... --ancilla-bit-index-from-right 1
-python -m scripts.02_run_mlae_triangulum ... --ancilla-bit-index-from-right 2
+```text
+--ancilla-bit-index-from-right 2
 ```
 
-Choose the setting that yields sensible `p_hat` values and coherent variation across $k$.
+### 8.1 Quick calibration procedure
+
+If the extracted probabilities appear degenerate, repeat the same command with:
+
+- `--ancilla-bit-index-from-right 0`
+- `--ancilla-bit-index-from-right 1`
+- `--ancilla-bit-index-from-right 2`
+
+and keep the setting that yields coherent `p_hat` values.
 
 ---
 
-## 7. Recommended Experimental Workflow (Triangulum)
+## 9. Campaign execution
 
-### 7.1 Step 1 — Hardware screening
-
-Run the affinity diagnostic first:
-
-```bash
-python -m scripts.00_check_function_affinity --gfunc sin2_pi --y 1.0 --rule midpoint
-```
-
-If the function is not classified as hardware-friendly for the rule you want to run, do **not** send it directly to Triangulum under the present implementation.
-
-### 7.2 Step 2 — Simulator validation
-
-Validate the configuration in simulation:
-
-```bash
-python -m scripts.01_run_mlae_sim \
-  --gfunc sin2_pi \
-  --y 1.0 \
-  --rule midpoint \
-  --ks 0,1,2 \
-  --shots 4096 \
-  --ancilla-bit-index-from-right 0 \
-  --outdir data/raw
-```
-
-For `x`, an equally relevant simulator validation is:
-
-```bash
-python -m scripts.01_run_mlae_sim \
-  --gfunc x \
-  --y 1.0 \
-  --rule midpoint \
-  --ks 0,1,2 \
-  --shots 4096 \
-  --ancilla-bit-index-from-right 0 \
-  --outdir data/raw
-```
-
-### 7.3 Step 3 — Baseline hardware functionality
-
-Start shallow and conservative:
-
-- `--ks 0,1`
-- `--shots 1024`
-
-```bash
-python -m scripts.02_run_mlae_triangulum \
-  --ip <TRIANGULUM_IP> --port 55444 --account <USER> --password <PASSWORD> \
-  --gfunc sin2_pi --y 1.0 --rule midpoint --ks 0,1 --shots 1024 \
-  --ancilla-bit-index-from-right 2 --outdir data/raw
-```
-
-If this works reliably, you may increase the shot budget. Under the current depth-constrained implementation, moving to `ks = {0,1,2}` is not generally recommended for direct hardware runs.
-
-### 7.4 Step 4 — Validation points
-
-Use values where the exact integral is known.
-
-For `sin2_pi`:
-
-- `y = 1.0` gives exact $I(1)=1/2$
-- `y = 0.5` gives exact $I(1/2)=1/4$
-
-For `x`:
-
-- `y = 1.0` gives exact $I(1)=1/2$
-
-Note: with only 4 grid points, quadrature bias may be visible; compare both against:
-
-- the exact integral, and
-- the corresponding quadrature reference (left / right / midpoint).
-
-### 7.5 Step 5 — Optional Simpson improvement (3 runs)
-
-Run three variants:
-
-- `--rule left`
-- `--rule midpoint`
-- `--rule right`
-
-Then combine classically:
-
-$$
-I_S = \frac{I_{\text{left}} + 4 I_{\text{mid}} + I_{\text{right}}}{6}.
-$$
-
-A campaign script is available:
+For multi-rule experiments, use:
 
 ```bash
 python -m scripts.04_run_triangulum_campaign \
-  --ip <TRIANGULUM_IP> --port 55444 --account <USER> --password <PASSWORD> \
-  --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024
+  --ip <TRIANGULUM_IP> \
+  --port 55444 \
+  --account <ACCOUNT> \
+  --password <PASSWORD> \
+  --gfunc "sin^2(pi*x)" \
+  --y 1.0 \
+  --rules left,midpoint,right \
+  --ks 0,1 \
+  --shots 1024
 ```
 
-To recompute the campaign summary without relaunching hardware:
+This script checks affine compatibility rule by rule before sending anything to hardware. If any requested rule is not affine-friendly for the current compressed Triangulum path, the campaign aborts before launch.
+
+To recompute a campaign summary without relaunching hardware:
 
 ```bash
 python -m scripts.04_run_triangulum_campaign \
-  --ip <TRIANGULUM_IP> --port 55444 --account <USER> --password <PASSWORD> \
-  --gfunc sin2_pi --y 1.0 --ks 0,1 --shots 1024 --reuse-existing
+  --ip <TRIANGULUM_IP> \
+  --port 55444 \
+  --account <ACCOUNT> \
+  --password <PASSWORD> \
+  --gfunc "sin^2(pi*x)" \
+  --y 1.0 \
+  --rules left,midpoint,right \
+  --ks 0,1 \
+  --shots 1024 \
+  --reuse-existing
 ```
 
-### 7.6 Important campaign restriction: compatibility is checked per rule
+When `left`, `midpoint`, and `right` are all present, the campaign summary computes the Simpson-style combination
 
-Before launching any hardware subprocess, `scripts.04_run_triangulum_campaign.py` now checks whether the requested `gfunc` is affine-friendly for **each requested rule**.
-
-This matters because a function can be hardware-friendly for `midpoint` and non-friendly for `left` or `right`.
-
-For example, under the current implementation:
-
-- `sin2_pi` is compatible with the full three-rule campaign,
-- `x` is compatible with direct `midpoint` hardware runs,
-- but `x` is **not** compatible with the full three-rule campaign because `left` and `right` are not affine-friendly for the current compressed path.
-
-If any requested rule is not affine-friendly, the campaign script aborts before sending anything to hardware and prints a specific warning.
+```math
+I_S = \frac{I_{\mathrm{left}} + 4I_{\mathrm{mid}} + I_{\mathrm{right}}}{6}.
+```
 
 ---
 
-## 8. Aggregating Results
+## 10. Aggregating results
 
-To merge all raw JSON runs into two CSV summary files:
+To summarize raw JSON artifacts into compact CSV tables:
 
 ```bash
-python -m scripts.03_summarize_results --indir data/raw --outdir data/processed
+python -m scripts.03_summarize_results --rawdir data/raw --outdir data/processed
 ```
 
-Outputs:
+This produces:
 
-- `data/processed/summary_runs.csv` (one row per run)
-- `data/processed/summary_by_k.csv` (one row per run × per $k$)
-
-These summaries retain metadata such as:
-
-- `gfunc`
-- exact integral (when available)
-- absolute error
-- hardware-affinity classification under the current Triangulum path
+- `data/processed/summary_runs.csv`
+- `data/processed/summary_by_k.csv`
+- `data/processed/summary_grouped.csv`
+- `data/processed/summary_manifest.json`
 
 ---
 
-## 9. Troubleshooting
+## 11. Practical recommendations
 
-### 9.1 Connection errors
+A robust workflow for a new integrand is:
 
-Symptoms:
+1. Run `00_check_function_affinity`
+2. Validate in the simulator with `01_run_mlae_sim`
+3. Start shallow on hardware with `02_run_mlae_triangulum`
+4. Aggregate results with `03_summarize_results`
+5. Use campaign mode only when all requested rules pass the affine pre-check
 
-- timeouts
-- refused connection
-- backend exceptions
-- transient messages such as `invalid state`
+For current hardware constraints, `ks = 0,1` is usually the conservative starting point.
+
+---
+
+## 12. Troubleshooting
+
+### 12.1 Connection errors
+
+Symptoms may include:
+
+- timeouts,
+- refused connection,
+- transient messages such as `invalid state`.
 
 Actions:
 
-- re-check `nc -vz <IP> 55444`
-- ensure VPN/LAN is active
-- verify correct IP and credentials
+- re-check `nc -vz -w 2 <TRIANGULUM_IP> 55444`,
+- verify LAN/VPN access,
+- verify credentials,
+- confirm the port.
 
-### 9.2 `Line depth exceeds limit:60`
+### 12.2 `Line depth exceeds limit:60`
 
-This indicates that the current circuit exceeds the Triangulum hardware budget.
+This indicates that the circuit exceeds the Triangulum line-depth budget.
 
 Actions:
 
 - run `scripts.00_check_function_affinity.py` first,
-- validate in simulation with `scripts.01_run_mlae_sim.py`,
-- restrict hardware tests to functions classified as hardware-friendly for the requested rule,
-- keep `--ks 0,1`,
-- do not assume that a function working in simulation is hardware-compatible across all quadrature rules.
+- validate in the simulator,
+- keep hardware runs shallow,
+- start with `--ks 0,1`,
+- do not assume simulator compatibility implies hardware compatibility.
 
-At the current stage, direct tests indicate:
+### 12.3 Degenerate counts
 
-- `sin2_pi`: works
-- `x`: works for `midpoint`
-- `x2`: exceeds depth limit
-- `parabola`: exceeds depth limit
-- `sqrt_x`: exceeds depth limit
+If counts appear nearly all-zero or all-one:
 
-### 9.3 Campaign aborts before hardware launch
+- re-check `--ancilla-bit-index-from-right`,
+- reduce depth,
+- reduce shots initially,
+- verify device calibration status.
 
-If `scripts.04_run_triangulum_campaign.py` aborts immediately with an affine-compatibility warning, this means that at least one requested rule is not affine-friendly for the chosen `gfunc`.
+### 12.4 Backend API mismatch
 
-Typical example:
-
-- `gfunc = x` with the full three-rule campaign fails the pre-check because `left` and `right` are non-affine under the current compressed hardware path.
-
-Actions:
-
-- run `scripts.00_check_function_affinity.py` separately for each rule,
-- restrict hardware execution to `midpoint` when appropriate,
-- use the full campaign only for functions that are affine-friendly for all requested rules.
-
-### 9.4 Counts look degenerate (all 0 or all 1)
-
-Actions:
-
-- re-check `--ancilla-bit-index-from-right` (Section 6)
-- reduce depth: use `--ks 0,1`
-- reduce shots initially (some backends have hidden limits)
-- confirm Triangulum calibration status (T1/T2, temperature stability)
-
-### 9.5 Backend API mismatch
-
-If SpinQit version differs, you may need to adapt:
+If your local SpinQit version differs, you may need to adapt:
 
 - `src/backends/nmr_triangulum.py::TriangulumBackend.run()`
 - `src/backends/simulator.py::SimulatorBackend.run()`
 
-The wrappers are intentionally isolated so you only modify backend invocation / return parsing in one place.
+The backend wrappers are intentionally isolated so that version-specific changes remain localized.
 
 ---
 
-## 10. Reproducibility Checklist (Before Reporting Results)
+## 13. Reproducibility checklist
 
-Record:
+Before reporting results, record:
 
 - SpinQit version
-- backend type and NMR task name
-- full command line used
-- `data/raw/*.json` produced
-- affinity diagnostic output when testing a new function
-- simulator validation output from `scripts/01_run_mlae_sim.py`
+- backend type and task name
+- full command line
+- produced `data/raw/*.json`
+- affinity diagnostics for new integrands
+- simulator validation outputs
+- processed summaries in `data/processed/`
 
-Run:
-
-- at least 3 repeated trials for the same configuration to assess variability
-
-Keep:
-
-- `summary_runs.csv`
-- `summary_by_k.csv`
-- any `affinity_*.json` / `affinity_*_summary.csv` / `affinity_*_grid.csv` files used to justify hardware screening
+For repeated assessments, keep multiple runs of the same configuration to quantify variability.
