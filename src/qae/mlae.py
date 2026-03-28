@@ -22,6 +22,7 @@ class RunResult:
     shots: int
     counts_per_k: Tuple[Dict[str, int], ...]
     p_hat: Tuple[float, ...]
+    successes: Tuple[int, ...]   # derived: round(p_hat[k] * shots)
 
 
 def _extract_ancilla_1_prob(counts: Dict[str, int], ancilla_bit_index_from_right: int) -> float:
@@ -127,6 +128,8 @@ def run_mlae(
         counts_list.append(counts)
         p_list.append(_extract_ancilla_1_prob(counts, ancilla_bit_index_from_right))
 
+    successes_list = [round(p * shots) for p in p_list]
+
     return RunResult(
         y=float(y),
         rule=str(rule),
@@ -136,4 +139,5 @@ def run_mlae(
         shots=int(shots),
         counts_per_k=tuple(counts_list),
         p_hat=tuple(p_list),
+        successes=tuple(successes_list),
     )
