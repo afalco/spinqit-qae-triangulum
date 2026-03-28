@@ -3,32 +3,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict
 
+from .bit_order import ReportedOrder, canonicalize_counts
+
 
 @dataclass
 class SimulatorConfig:
     shots: int = 4096
     optimization_level: int = 0
+    reported_order: ReportedOrder = "q0q1q2"
 
 
 class SimulatorBackend:
     """
     Thin wrapper around the SpinQit basic simulator backend.
 
-    SpinQit 0.2.2 uses the following flow:
-      1) get compiler + backend
-      2) compile the circuit
-      3) configure shots via BasicSimulatorConfig
-      4) execute(compiled_circuit, config)
+    All returned counts are canonicalized to the repository-wide state order:
+        q0q1q2  ->  ['000', '001', ..., '111']
 
-    The official docs example uses:
-        comp = get_compiler("native")
-        engine = get_basic_simulator()
-        exe = comp.compile(circ, optimization_level)
-        config = BasicSimulatorConfig()
-        config.configure_shots(1024)
-        result = engine.execute(exe, config)
-        print(result.counts)
-     [oai_citation:1‡doc.spinq.cn](https://doc.spinq.cn/doc/spinqit/basics/basics.html?utm_source=chatgpt.com)
+    This means downstream code does not need to guess bit order ad hoc.
     """
 
     def __init__(self, cfg: SimulatorConfig = SimulatorConfig()):
@@ -49,6 +41,19 @@ class SimulatorBackend:
         engine = get_basic_simulator()
         return compiler, engine, BasicSimulatorConfig
 
+    @staticmethod
+    def _extract_counts(result) -> Dict[str, int]:
+        if isinstance(result, dict):
+            return result
+        if hasattr(result, "counts"):
+            return result.counts
+        if hasattr(result, "get_counts"):
+            return result.get_counts()
+        raise RuntimeError(
+            "Simulator backend returned an unsupported result type; "
+            "please adapt counts extraction."
+        )
+
     def run(self, circuit, shots: int = 4096) -> Dict[str, int]:
         compiler = self._compiler
         engine = self._engine
@@ -56,10 +61,8 @@ class SimulatorBackend:
 
         try:
             exe = compiler.compile(circuit, self.cfg.optimization_level)
-
             config = BasicSimulatorConfig()
             config.configure_shots(int(shots))
-
             result = engine.execute(exe, config)
         except Exception as e:
             raise RuntimeError(
@@ -67,14 +70,5 @@ class SimulatorBackend:
                 "SpinQit compile + BasicSimulatorConfig flow."
             ) from e
 
-        if isinstance(result, dict):
-            return result
-        if hasattr(result, "counts"):
-            return result.counts
-        if hasattr(result, "get_counts"):
-            return result.get_counts()
-
-        raise RuntimeError(
-            "Simulator backend returned an unsupported result type; "
-            "please adapt counts extraction."
-        )
+        raw_counts = self._extract_counts(result)
+        return canonicalize_counts(raw_counts, reported_order=self.cfg.reported_order, nbits=3)
