@@ -1,5 +1,4 @@
 # scripts/01_run_mlae_sim.py
-
 from __future__ import annotations
 
 import argparse
@@ -8,10 +7,11 @@ import json
 import os
 from datetime import datetime, timezone
 
+from src.backends.bit_order import ancilla_index_from_right_for_canonical_q0q1q2
 from src.backends.simulator import SimulatorBackend, SimulatorConfig
 from src.qae.integrands import OFFICIAL_GFUNCS, exact_integral, integrand_label, integrand_slug
 from src.qae.mlae import run_mlae
-from src.qae.postprocess import amplitude_to_integral_report, mle_amplitude
+from src.qae.postprocess import mle_amplitude, amplitude_to_integral_report
 from src.qae.state_prep import build_A_spec, is_affine_hardware_friendly
 
 
@@ -26,28 +26,29 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--y", type=float, default=1.0, help="Upper limit y in [0,1] for I(y)=∫_0^y g(x) dx.")
 
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--gfunc",
-        type=str,
-        choices=GFUNC_CHOICES,
-        help="Official target function g(x).",
-    )
-    group.add_argument(
-        "--expr",
-        type=str,
-        help="Custom expression in x for exploratory runs.",
-    )
+    group.add_argument("--gfunc", type=str, choices=GFUNC_CHOICES, help="Official target function g(x).")
+    group.add_argument("--expr", type=str, help="Custom expression in x for exploratory runs.")
 
     p.add_argument("--rule", type=str, default="midpoint", choices=["left", "right", "midpoint"])
     p.add_argument("--ks", type=str, default="0,1,2", help="Comma-separated k values, e.g. '0,1,2'.")
     p.add_argument("--shots", type=int, default=4096, help="Shots per k circuit.")
     p.add_argument(
+        "--reported-order",
+        type=str,
+        default="q0q1q2",
+        choices=["q0q1q2", "q2q1q0"],
+        help=(
+            "How the simulator backend reports raw 3-bit strings before canonicalization. "
+            "The backend wrapper will canonicalize to q0q1q2."
+        ),
+    )
+    p.add_argument(
         "--ancilla-bit-index-from-right",
         type=int,
-        default=0,
+        default=ancilla_index_from_right_for_canonical_q0q1q2(2),
         help=(
-            "Which bit (from the right) corresponds to the ancilla in returned bitstrings. "
-            "Adjust if your simulator bit ordering differs."
+            "Ancilla position from the right *after* backend canonicalization to q0q1q2. "
+            "For 3 qubits with ancilla qubit index=2, the canonical default is 0."
         ),
     )
     p.add_argument("--outdir", type=str, default="data/raw", help="Output directory for raw JSON/CSV results.")
@@ -79,7 +80,7 @@ def main() -> None:
     args = parse_args()
     ks = tuple(int(x.strip()) for x in args.ks.split(",") if x.strip() != "")
 
-    backend = SimulatorBackend(SimulatorConfig())
+    backend = SimulatorBackend(SimulatorConfig(reported_order=args.reported_order))
 
     rr = run_mlae(
         backend=backend,
@@ -115,7 +116,10 @@ def main() -> None:
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
-    run_id = f"sim_{slug}_y{args.y:g}_{args.rule}_ks{'-'.join(map(str, ks))}_shots{args.shots}_{stamp}"
+    run_id = (
+        f"sim_{slug}_y{args.y:g}_{args.rule}_"
+        f"ks{'-'.join(map(str, ks))}_shots{args.shots}_{stamp}"
+    )
 
     ensure_dir(args.outdir)
     out_json = os.path.join(args.outdir, f"{run_id}.json")
@@ -133,19 +137,16 @@ def main() -> None:
         "shots_per_k": rr.shots,
         "p_hat": list(rr.p_hat),
         "successes": successes,
-        "mle": {
-            "a_hat": mle.a_hat,
-            "theta_hat": mle.theta_hat,
-            "nll": mle.nll,
-        },
-        "integral": {
-            "I_hat": report.I_hat,
-        },
+        "mle": {"a_hat": mle.a_hat, "theta_hat": mle.theta_hat, "nll": mle.nll},
+        "integral": {"I_hat": report.I_hat},
         "exact_integral": i_exact,
         "abs_error_global": (abs(report.I_hat - i_exact) if i_exact is not None else None),
         "hardware_friendly_affine": hardware_friendly,
         "function_class": function_class,
         "counts_per_k": list(rr.counts_per_k),
+        "state_order": "q0q1q2",
+        "reported_order_before_canonicalization": args.reported_order,
+        "ancilla_bit_index_from_right": args.ancilla_bit_index_from_right,
         "timestamp_utc": stamp,
     }
 
@@ -173,6 +174,9 @@ def main() -> None:
                 "I_hat_global": report.I_hat,
                 "exact_integral": i_exact,
                 "abs_error_global": (abs(report.I_hat - i_exact) if i_exact is not None else None),
+                "state_order": "q0q1q2",
+                "reported_order_before_canonicalization": args.reported_order,
+                "ancilla_bit_index_from_right": args.ancilla_bit_index_from_right,
                 "timestamp_utc": stamp,
             }
         )
