@@ -115,17 +115,9 @@ def main() -> None:
     hardware_friendly = is_affine_hardware_friendly(spec)
     function_class = classify_function_for_current_hardware(hardware_friendly)
 
-    successes = []
-    for counts in rr.counts_per_k:
-        succ = 0
-        for bitstr, c in counts.items():
-            s = bitstr.replace("0b", "").strip()
-            if len(s) < args.ancilla_bit_index_from_right + 1:
-                s = s.zfill(args.ancilla_bit_index_from_right + 1)
-            anc_bit = s[-1 - args.ancilla_bit_index_from_right]
-            if anc_bit == "1":
-                succ += c
-        successes.append(succ)
+    # successes is derived from p_hat inside run_mlae() to avoid
+    # duplicate bit-counting logic that could diverge on refactoring.
+    successes = list(rr.successes)
 
     shots_vec = [rr.shots] * len(rr.ks)
     mle = mle_amplitude(rr.ks, successes, shots_vec)
