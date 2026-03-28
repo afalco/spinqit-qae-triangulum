@@ -46,6 +46,21 @@ def build_A_spec(
         if theta is None:
             gx = g_value(x_i, gfunc=gfunc, expr=expr)
             theta = theta_from_value(gx)
+        else:
+            # Consistency check: closed-form theta must agree with the
+            # generic formula 2*asin(sqrt(g(x))) used by check_affinity.
+            # A mismatch here means integrands.py has a typo in the
+            # closed-form table and the circuit would silently implement
+            # a different function from what the affinity diagnostic validated.
+            gx = g_value(x_i, gfunc=gfunc, expr=expr)
+            theta_generic = theta_from_value(gx)
+            if abs(theta - theta_generic) > 1e-9:
+                raise ValueError(
+                    f"Closed-form theta mismatch for gfunc={gfunc!r} at x={x_i}: "
+                    f"closed_form={theta:.12f}, generic={theta_generic:.12f}, "
+                    f"diff={abs(theta - theta_generic):.3e}. "
+                    "Fix the closed-form table in integrands.py."
+                )
 
         patterns.append((bits, theta))
 

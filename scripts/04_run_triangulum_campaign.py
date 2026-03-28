@@ -142,8 +142,17 @@ def current_utc_stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _timestamp_from_stem(stem: str) -> str:
+    """Extract the trailing YYYYMMDDTHHMMSSz segment for deterministic sorting."""
+    parts = stem.rsplit("_", 1)
+    return parts[-1] if len(parts) == 2 else ""
+
+
 def find_newest_matching_json(raw_outdir: Path, prefix: str) -> Path:
-    matches = sorted(raw_outdir.glob(f"{prefix}*.json"), key=lambda p: p.stat().st_mtime)
+    matches = sorted(
+        raw_outdir.glob(f"{prefix}*.json"),
+        key=lambda p: _timestamp_from_stem(p.stem),
+    )
     if not matches:
         raise FileNotFoundError(f"No JSON files found in {raw_outdir} matching prefix '{prefix}'.")
     return matches[-1]
@@ -188,7 +197,8 @@ def run_single_rule(args: argparse.Namespace, rule: str) -> Path:
     ensure_dir(str(raw_outdir))
 
     slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
-    prefix = f"triangulum_{slug}_y{args.y:g}_{rule}_ks{args.ks.replace(',', '-')}_shots{args.shots}_"
+    ks_slug = "-".join(str(int(k.strip())) for k in args.ks.split(",") if k.strip())
+    prefix = f"triangulum_{slug}_y{args.y:g}_{rule}_ks{ks_slug}_shots{args.shots}_"
 
     if args.reuse_existing:
         try:
@@ -325,7 +335,8 @@ def main() -> None:
     ensure_dir(args.processed_outdir)
     stamp = current_utc_stamp()
     slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
-    base = f"triangulum_campaign_{slug}_y{args.y:g}_rules{'-'.join(rules)}_ks{args.ks.replace(',', '-')}_shots{args.shots}_{stamp}"
+    ks_slug = "-".join(str(int(k.strip())) for k in args.ks.split(",") if k.strip())
+    base = f"triangulum_campaign_{slug}_y{args.y:g}_rules_{'-'.join(rules)}_ks{ks_slug}_shots{args.shots}_{stamp}"
 
     out_json = Path(args.processed_outdir) / f"{base}.json"
     out_csv = Path(args.processed_outdir) / f"{base}.csv"
