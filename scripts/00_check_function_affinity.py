@@ -11,17 +11,24 @@ from datetime import datetime, timezone
 from src.qae.integrands import (
     OFFICIAL_GFUNCS,
     exact_integral,
+    g_value,
     integrand_label,
     integrand_slug,
+    official_closed_form_theta,
+    theta_from_value,
 )
-from src.qae.state_prep import build_A_spec, is_affine_hardware_friendly
+from src.qae.quadrature import grid_points
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
             "Check whether the 4-point angle table induced by an integrand is exactly affine "
-            "for the current 2-index-qubit Triangulum-friendly state preparation."
+            "for the current 2-index-qubit Triangulum-friendly discretization.\n\n"
+            "Important: this diagnostic evaluates the GENERIC amplitude-to-angle mapping\n"
+            "    theta = 2*asin(sqrt(g(x)))\n"
+            "and does not classify a function as affine merely because the implementation\n"
+            "provides a special closed-form angle parametrization for compilation."
         )
     )
 
@@ -125,7 +132,7 @@ def recommendation_from_classification(
         return (
             "Validate in simulation first: "
             f"python -m scripts.01_run_mlae_sim --gfunc {quoted} "
-            f"--y {y} --rule {rule} --ks 0,1,2 --shots 4096"
+            f"--y {y} --rule {rule} --ks 0,1 --shots 4096"
         )
 
     assert expr is not None
@@ -140,21 +147,75 @@ def recommendation_from_classification(
     return (
         "Custom expression is not exactly affine on the current grid. "
         f"Try first: python -m scripts.01_run_mlae_sim --expr {quoted} "
-        f"--y {y} --rule {rule} --ks 0,1,2 --shots 4096"
+        f"--y {y} --rule {rule} --ks 0,1 --shots 4096"
     )
+
+
+def build_generic_angle_table(
+    y: float,
+    rule: str,
+    gfunc: str | None = None,
+    expr: str | None = None,
+):
+    """
+    Build the 4-point angle table using the GENERIC mapping
+
+        theta(x) = 2 * asin(sqrt(g(x)))
+
+    This is the mathematical affinity diagnostic we want here.
+
+    It intentionally does NOT substitute any special closed-form theta
+    parametrization that may be available for selected official functions.
+    """
+    grid = grid_points(y=y, n=2, rule=rule)
+    patterns = []
+
+    for i, x_i in enumerate(grid.points):
+        bits = tuple((i >> (1 - b)) & 1 for b in range(2))
+        gx = g_value(x_i, gfunc=gfunc, expr=expr)
+        theta = theta_from_value(gx)
+        patterns.append((bits, theta, x_i, gx))
+
+    return patterns
+
+
+def build_closed_form_angle_table_if_available(
+    y: float,
+    rule: str,
+    gfunc: str | None = None,
+):
+    """
+    Optional informational table using the implementation's special closed-form
+    parametrization when available for an official gfunc.
+    """
+    if gfunc is None:
+        return None
+
+    grid = grid_points(y=y, n=2, rule=rule)
+    patterns = []
+
+    any_closed_form = False
+    for i, x_i in enumerate(grid.points):
+        bits = tuple((i >> (1 - b)) & 1 for b in range(2))
+        theta_cf = official_closed_form_theta(x_i, gfunc=gfunc)
+        if theta_cf is not None:
+            any_closed_form = True
+        patterns.append((bits, theta_cf, x_i))
+
+    return patterns if any_closed_form else None
 
 
 def main() -> None:
     args = parse_args()
 
-    spec = build_A_spec(
+    patterns = build_generic_angle_table(
         y=args.y,
         rule=args.rule,
         gfunc=args.gfunc,
         expr=args.expr,
     )
 
-    angle_map = {bits: theta for bits, theta in spec.patterns}
+    angle_map = {bits: theta for bits, theta, _, _ in patterns}
     required = [(0, 0), (0, 1), (1, 0), (1, 1)]
     if any(bits not in angle_map for bits in required):
         raise SystemExit("Unexpected angle table: missing one of the four basis patterns.")
@@ -166,20 +227,36 @@ def main() -> None:
 
     c0, c1, c2, t11_fit, residual = affine_fit_from_angles(t00, t01, t10, t11)
     label = classify_affinity(residual, args.tol)
-    exact_affine = is_affine_hardware_friendly(spec, tol=args.tol)
+    exact_affine = residual <= args.tol
+
+    closed_form_patterns = build_closed_form_angle_table_if_available(
+        y=args.y,
+        rule=args.rule,
+        gfunc=args.gfunc,
+    )
 
     print("=== Function affinity diagnostic ===")
     print(f"integrand        : {integrand_label(gfunc=args.gfunc, expr=args.expr)}")
     print(f"mode             : {'gfunc' if args.gfunc is not None else 'expr'}")
     print(f"y                : {args.y}")
     print(f"rule             : {args.rule}")
+    print("theta model      : generic theta = 2*asin(sqrt(g(x)))")
     print()
+
+    print("Grid points and generic angles:")
+    for bits, theta, x_i, gx in patterns:
+        print(
+            f"  bits={bits}  x={x_i:.12f}  g(x)={gx:.12f}  theta={theta:.12f}"
+        )
+    print()
+
     print("Angles:")
     print(f"  theta_00 = {t00:.12f}")
     print(f"  theta_01 = {t01:.12f}")
     print(f"  theta_10 = {t10:.12f}")
     print(f"  theta_11 = {t11:.12f}")
     print()
+
     print("Affine fit:")
     print(f"  c0      = {c0:.12f}")
     print(f"  c1      = {c1:.12f}")
@@ -187,8 +264,20 @@ def main() -> None:
     print(f"  t11_fit = {t11_fit:.12f}")
     print(f"  residual= {residual:.12e}")
     print()
+
     print(f"classification   : {label}")
     print(f"exact_affine     : {exact_affine}")
+
+    if closed_form_patterns is not None:
+        print()
+        print("Closed-form theta table available for this official gfunc:")
+        for bits, theta_cf, x_i in closed_form_patterns:
+            if theta_cf is None:
+                continue
+            print(f"  bits={bits}  x={x_i:.12f}  theta_closed_form={theta_cf:.12f}")
+        print("note             : closed-form parametrization is shown for information only")
+        print("                   and is NOT used for the affinity classification above.")
+
     print(
         "recommendation   : "
         + recommendation_from_classification(
@@ -218,6 +307,7 @@ def main() -> None:
         "y": args.y,
         "rule": args.rule,
         "tol": args.tol,
+        "theta_model": "generic_2asin_sqrt_g",
         "theta_00": t00,
         "theta_01": t01,
         "theta_10": t10,
@@ -230,12 +320,62 @@ def main() -> None:
         "classification": label,
         "exact_affine": exact_affine,
         "exact_integral": exact_integral(args.y, gfunc=args.gfunc, expr=args.expr),
+        "grid_points": [
+            {
+                "bits": "".join(str(b) for b in bits),
+                "x": x_i,
+                "g_value": gx,
+                "theta_generic": theta,
+            }
+            for bits, theta, x_i, gx in patterns
+        ],
+        "closed_form_theta_table_available": closed_form_patterns is not None,
+        "closed_form_theta_table": (
+            [
+                {
+                    "bits": "".join(str(b) for b in bits),
+                    "x": x_i,
+                    "theta_closed_form": theta_cf,
+                }
+                for bits, theta_cf, x_i in closed_form_patterns
+                if theta_cf is not None
+            ]
+            if closed_form_patterns is not None
+            else []
+        ),
         "timestamp_utc": stamp,
     }
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
-    write_csv([payload], out_csv)
+    write_csv(
+        [
+            {
+                "integrand_label": payload["integrand_label"],
+                "gfunc": payload["gfunc"],
+                "expr": payload["expr"],
+                "y": payload["y"],
+                "rule": payload["rule"],
+                "tol": payload["tol"],
+                "theta_model": payload["theta_model"],
+                "theta_00": payload["theta_00"],
+                "theta_01": payload["theta_01"],
+                "theta_10": payload["theta_10"],
+                "theta_11": payload["theta_11"],
+                "c0": payload["c0"],
+                "c1": payload["c1"],
+                "c2": payload["c2"],
+                "t11_fit": payload["t11_fit"],
+                "residual": payload["residual"],
+                "classification": payload["classification"],
+                "exact_affine": payload["exact_affine"],
+                "exact_integral": payload["exact_integral"],
+                "closed_form_theta_table_available": payload["closed_form_theta_table_available"],
+                "timestamp_utc": payload["timestamp_utc"],
+            }
+        ],
+        out_csv,
+    )
     print(f"[OK] Wrote:\n  {out_json}\n  {out_csv}")
 
 
