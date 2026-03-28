@@ -475,44 +475,6 @@ This change makes the repository both more reproducible and more flexible, while
 
 ---
 
-## Auxiliary utility: bit-order calibration
-
-The repository also includes an auxiliary script:
-
-- `calibrate_bit_order.py`
-
-Its purpose is to determine how a backend reports 3-qubit measurement bitstrings,
-for example `q0q1q2` versus `q2q1q0`, by running a small family of calibration
-circuits with known `X` flips.
-
-This utility is independent of the `--gfunc` / `--expr` integrand workflow, but it
-is very useful before running QAE experiments because it helps determine the
-correct value of:
-
-- `--ancilla-bit-index-from-right`
-
-Typical usage on the simulator:
-
-```bash
-python calibrate_bit_order.py --backend sim --shots 1024 --outdir data/processed
-```
-
-Typical usage on Triangulum:
-
-```bash
-python calibrate_bit_order.py \
-  --backend triangulum \
-  --ip <TRIANGULUM_IP> \
-  --port 55444 \
-  --account <ACCOUNT> \
-  --password <PASSWORD> \
-  --shots 1024 \
-  --outdir data/processed
-```
-
-The script writes JSON and CSV calibration artifacts and reports the inferred
-bit-order convention of the backend.
-
 ## Canonical bit-order policy
 
 This repository uses a single **canonical state-order convention** for all 3-qubit
@@ -621,6 +583,45 @@ current default layout, the correct value is `0`**.
 - canonical order = `q0q1q2`
 - default ancilla = `q2`
 - therefore default `ancilla_bit_index_from_right = 0`
+
+
+## Auxiliary utility: bit-order calibration
+
+The repository also includes an auxiliary script:
+
+- `calibrate_bit_order.py`
+
+Its purpose is to determine how a backend reports 3-qubit measurement bitstrings,
+for example `q0q1q2` versus `q2q1q0`, by running a small family of calibration
+circuits with known `X` flips.
+
+This utility is independent of the `--gfunc` / `--expr` integrand workflow, but it
+is very useful before running QAE experiments because it helps determine the
+correct value of:
+
+- `--ancilla-bit-index-from-right`
+
+Typical usage on the simulator:
+
+```bash
+python calibrate_bit_order.py --backend sim --shots 1024 --outdir data/processed
+```
+
+Typical usage on Triangulum:
+
+```bash
+python calibrate_bit_order.py \
+  --backend triangulum \
+  --ip <TRIANGULUM_IP> \
+  --port 55444 \
+  --account <ACCOUNT> \
+  --password <PASSWORD> \
+  --shots 1024 \
+  --outdir data/processed
+```
+
+The script writes JSON and CSV calibration artifacts and reports the inferred
+bit-order convention of the backend.
 
 ### Role of `calibrate_bit_order.py`
 
