@@ -515,33 +515,112 @@ bit-order convention of the backend.
 
 ## Canonical bit-order policy
 
-The repository now adopts a single canonical state-order convention for all
-stored and compared 3-qubit distributions:
+This repository uses a single **canonical state-order convention** for all 3-qubit
+distributions stored, compared, and exported:
 
-- canonical state order: `q0q1q2`
-- canonical state list: `['000', '001', '010', '011', '100', '101', '110', '111']`
+- canonical qubit order: `q0q1q2`
+- canonical state list:
+  - `000`, `001`, `010`, `011`, `100`, `101`, `110`, `111`
 
-This convention applies to:
+This convention is used consistently for:
 
-- simulator runs,
-- Triangulum NMR runs,
+- simulator outputs,
+- Triangulum NMR outputs after backend canonicalization,
 - JSON and CSV artifacts,
-- affinity diagnostics,
-- postprocessing and summaries.
+- postprocessing and summaries,
+- any comparison against target distributions.
+
+### Important distinction: canonical order vs ancilla choice
+
+The canonical bitstring order `q0q1q2` does **not** mean that `q0` is the ancilla.
+
+These are two different things:
+
+- **canonical order** tells us how qubits are written inside a 3-bit string;
+- **ancilla choice** tells us which physical/logical qubit plays the role of the
+  ancilla in the MLAE/QAE circuit.
+
+### Default qubit layout used in this repository
+
+The current default layout is:
+
+- index qubits: `q0`, `q1`
+- ancilla qubit: `q2`
+
+So the default circuit structure is:
+
+- data/index register on `q0`, `q1`
+- ancilla on `q2`
+
+### Consequence for bitstring interpretation
+
+Because the canonical order is:
+
+```text
+q0 q1 q2
+```
+
+the rightmost bit in a canonical 3-bit string is `q2`.
+
+Therefore, with the default layout used in this repository:
+
+- ancilla qubit = `q2`
+- `ancilla_bit_index_from_right = 0`
+
+This is the correct default used by the main MLAE workflow.
+
+### Example
+
+Suppose a canonical bitstring is:
+
+```text
+101
+```
+
+interpreted in canonical order as:
+
+- `q0 = 1`
+- `q1 = 0`
+- `q2 = 1`
+
+Since the ancilla is `q2`, the ancilla bit is the **rightmost** bit, so:
+
+- ancilla value = `1`
+- `ancilla_bit_index_from_right = 0`
 
 ### Backend-reported order vs canonical order
 
-A backend may report raw bitstrings in one of two common orders:
+A backend may report raw bitstrings in different orders, for example:
 
 - `q0q1q2`
 - `q2q1q0`
 
-The wrappers in `src/backends/` are responsible for converting raw backend
-counts into the canonical repository order before those counts are used
-downstream.
+This repository resolves that issue inside the backend wrappers.
 
-This means that the main execution scripts no longer rely on ad hoc bit-order
-reasoning when extracting the ancilla probability.
+So downstream code always works with counts already converted to the canonical order:
+
+- canonical order seen by the rest of the repo: `q0q1q2`
+
+This means that ancilla extraction in the MLAE pipeline should always be interpreted
+relative to that canonical order.
+
+### Practical summary
+
+For the repository as currently configured:
+
+- canonical bitstring order: `q0q1q2`
+- default ancilla qubit: `q2`
+- default ancilla position from the right: `0`
+
+If at some point the ancilla qubit were changed to another qubit, then the value of
+`ancilla_bit_index_from_right` would need to change accordingly. But **with the
+current default layout, the correct value is `0`**.
+
+### One-line summary
+
+- canonical order = `q0q1q2`
+- default ancilla = `q2`
+- therefore default `ancilla_bit_index_from_right = 0`
 
 ### Role of `calibrate_bit_order.py`
 
