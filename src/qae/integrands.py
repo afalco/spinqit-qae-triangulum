@@ -181,5 +181,5 @@ def official_closed_form_theta(
     if gfunc == "sin^2(pi*x/2)":
         return math.pi * x
     if gfunc == "sin^2(pi*x)":
-        return 2.0 * math.pi * x
+        return None  # no closed-form affine theta; use generic arcsin computation
     return None
