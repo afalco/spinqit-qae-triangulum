@@ -106,6 +106,45 @@ def is_affine_hardware_friendly(spec: ASpec, tol: float = 1e-9) -> bool:
     return _extract_affine_angles_for_two_controls(spec, tol=tol) is not None
 
 
+def _extract_quadratic_angles_for_two_controls(spec: ASpec, tol: float = 1e-9):
+    """
+    Extract Mobius coefficients for the degree-2 (quadratic) case with 2 index qubits.
+
+    Any function on B^2 has the unique multilinear expansion
+        theta(b0, b1) = c0 + c1*b0 + c2*b1 + c12*b0*b1
+    with coefficients recovered by Mobius inversion:
+        c0   = t00
+        c1   = t10 - t00
+        c2   = t01 - t00
+        c12  = t11 - t10 - t01 + t00
+    This covers ALL functions on B^2, so this extractor always succeeds
+    for a 2-qubit spec (returns None only if the spec has wrong shape).
+
+    The encoding operator then factors as (Thm 4.2 in the paper):
+        G_g = Ry(c0) . C_q0-Ry(c1) . C_q1-Ry(c2) . CC_q0q1-Ry(c12)
+    implemented with exactly binom(2,<=2) = 4 controlled-Ry gates.
+    """
+    if len(spec.index_qubits) != 2 or len(spec.patterns) != 4:
+        return None
+
+    angle_map = {bits: theta for bits, theta in spec.patterns}
+    required = [(0, 0), (0, 1), (1, 0), (1, 1)]
+    if any(bits not in angle_map for bits in required):
+        return None
+
+    t00 = angle_map[(0, 0)]
+    t01 = angle_map[(0, 1)]
+    t10 = angle_map[(1, 0)]
+    t11 = angle_map[(1, 1)]
+
+    c0  = t00
+    c1  = t10 - t00
+    c2  = t01 - t00
+    c12 = t11 - t10 - t01 + t00
+
+    return c0, c1, c2, c12
+
+
 def _apply_single_controlled_ry(circuit, control: int, target: int, theta: float):
     if abs(theta) < 1e-12:
         return
@@ -113,6 +152,35 @@ def _apply_single_controlled_ry(circuit, control: int, target: int, theta: float
     _, _, Ry, MultiControlledGateBuilder = _get_gates()
     c_ry = MultiControlledGateBuilder(1, Ry, [theta]).to_gate()
     circuit << (c_ry, (control, target))
+
+
+def _apply_two_controlled_ry(circuit, control0: int, control1: int, target: int, theta: float):
+    """
+    Implement CC-Ry(theta) — a doubly-controlled Ry rotation — using the
+    standard decomposition into singly-controlled gates (Barenco et al. 1995,
+    also Appendix B of the paper):
+        CC-Ry(theta) = C_c1-Ry(theta/2) . CNOT(c0->c1) .
+                       C_c1-Ry(-theta/2) . CNOT(c0->c1)
+    This uses 2 CNOTs and 2 singly-controlled Ry gates, keeping circuit
+    depth within the Triangulum line-depth limit of 60.
+    """
+    if abs(theta) < 1e-12:
+        return
+
+    _, X, Ry, MultiControlledGateBuilder = _get_gates()
+
+    # Step 1: C_control1-Ry(theta/2) on target
+    _apply_single_controlled_ry(circuit, control1, target, theta / 2.0)
+
+    # Step 2: CNOT(control0 -> control1)
+    from spinqit import CNOT  # type: ignore
+    circuit << (CNOT, (control0, control1))
+
+    # Step 3: C_control1-Ry(-theta/2) on target
+    _apply_single_controlled_ry(circuit, control1, target, -theta / 2.0)
+
+    # Step 4: CNOT(control0 -> control1)
+    circuit << (CNOT, (control0, control1))
 
 
 def _apply_controlled_ry_on_pattern(
@@ -144,6 +212,7 @@ def apply_A_from_spec(circuit, spec: ASpec):
     for q in spec.index_qubits:
         circuit << (H, q)
 
+    # Branch 1: affine case (d=1) — 3 gates, shallowest circuit
     affine = _extract_affine_angles_for_two_controls(spec)
     if affine is not None:
         c0, c1, c2 = affine
@@ -156,6 +225,25 @@ def apply_A_from_spec(circuit, spec: ASpec):
         _apply_single_controlled_ry(circuit, q1, a, c2)
         return
 
+    # Branch 2: quadratic case (d=2) — 4 controlled-Ry gates via Mobius
+    # factorisation (Thm 4.2). CC-Ry is decomposed into 2 CNOTs + 2 C-Ry
+    # (Appendix B), keeping total depth within the Triangulum limit of 60.
+    if len(spec.index_qubits) == 2:
+        quad = _extract_quadratic_angles_for_two_controls(spec)
+        if quad is not None:
+            c0, c1, c2, c12 = quad
+            q0, q1 = spec.index_qubits
+            a = spec.ancilla
+
+            if abs(c0) > 1e-12:
+                circuit << (Ry, a, c0)
+            _apply_single_controlled_ry(circuit, q0, a, c1)
+            _apply_single_controlled_ry(circuit, q1, a, c2)
+            _apply_two_controlled_ry(circuit, q0, q1, a, c12)
+            return
+
+    # Branch 3: generic fallback (d > 2 or n > 2) — uses MultiControlledGateBuilder
+    # Note: this branch may exceed the Triangulum line-depth limit for n=2, d=2.
     for bits, theta in spec.patterns:
         _apply_controlled_ry_on_pattern(circuit, spec.index_qubits, spec.ancilla, theta, bits)
 
@@ -163,6 +251,7 @@ def apply_A_from_spec(circuit, spec: ASpec):
 def apply_Adag_from_spec(circuit, spec: ASpec):
     H, _, Ry, _ = _get_gates()
 
+    # Branch 1: affine case (d=1)
     affine = _extract_affine_angles_for_two_controls(spec)
     if affine is not None:
         c0, c1, c2 = affine
@@ -178,6 +267,25 @@ def apply_Adag_from_spec(circuit, spec: ASpec):
             circuit << (H, q)
         return
 
+    # Branch 2: quadratic case (d=2) — reverse order, negated angles
+    if len(spec.index_qubits) == 2:
+        quad = _extract_quadratic_angles_for_two_controls(spec)
+        if quad is not None:
+            c0, c1, c2, c12 = quad
+            q0, q1 = spec.index_qubits
+            a = spec.ancilla
+
+            _apply_two_controlled_ry(circuit, q0, q1, a, -c12)
+            _apply_single_controlled_ry(circuit, q1, a, -c2)
+            _apply_single_controlled_ry(circuit, q0, a, -c1)
+            if abs(c0) > 1e-12:
+                circuit << (Ry, a, -c0)
+
+            for q in spec.index_qubits:
+                circuit << (H, q)
+            return
+
+    # Branch 3: generic fallback
     for bits, theta in reversed(spec.patterns):
         _apply_controlled_ry_on_pattern(circuit, spec.index_qubits, spec.ancilla, -theta, bits)
 
