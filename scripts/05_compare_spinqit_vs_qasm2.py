@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if REPO_ROOT not in sys.path:
@@ -70,7 +68,6 @@ def ccx_op(c0: int, c1: int, t: int, block: str) -> list[Op]:
 
 
 def measure_op(q: int, c: int, block: str) -> list[Op]:
-    # classical bit included in qubits tuple positionally for comparison simplicity
     return [Op("measure", (q, c), None, block)]
 
 
@@ -311,6 +308,14 @@ def summarize_ops(ops: list[Op]) -> dict[str, int]:
     return out
 
 
+def default_report_path(qasm: str | None, qasm_dir: str | None) -> Path:
+    if qasm_dir is not None:
+        return Path(qasm_dir) / "comparison_report.json"
+    assert qasm is not None
+    qasm_path = Path(qasm)
+    return qasm_path.parent / f"{qasm_path.stem}_comparison_report.json"
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Compare IBM Composer QASM2 export against the logical SpinQit structure from the repo."
@@ -339,7 +344,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--json",
         action="store_true",
-        help="Emit machine-readable JSON summary.",
+        help="Emit machine-readable JSON summary to stdout.",
+    )
+    p.add_argument(
+        "--write-report",
+        action="store_true",
+        help="Write comparison_report.json automatically.",
+    )
+    p.add_argument(
+        "--report-out",
+        type=str,
+        default=None,
+        help="Explicit output path for the JSON report.",
     )
     return p.parse_args()
 
@@ -388,6 +404,16 @@ def compare_one_file(
     }
 
 
+def maybe_write_report(payload: dict, args: argparse.Namespace) -> Path | None:
+    if not args.write_report and args.report_out is None:
+        return None
+
+    report_path = Path(args.report_out) if args.report_out else default_report_path(args.qasm, args.qasm_dir)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return report_path
+
+
 def main() -> None:
     args = parse_args()
 
@@ -414,8 +440,23 @@ def main() -> None:
         results.append(res)
         all_ok = all_ok and bool(res["ok"])
 
+    payload = {
+        "all_ok": all_ok,
+        "integrand": args.gfunc if args.gfunc is not None else args.expr,
+        "y": args.y,
+        "rule": args.rule,
+        "angle_tol": args.angle_tol,
+        "results": results,
+    }
+
+    report_path = maybe_write_report(payload, args)
+
     if args.json:
-        print(json.dumps({"all_ok": all_ok, "results": results}, indent=2))
+        print(json.dumps(payload, indent=2))
+        if report_path is not None:
+            print(f"\n[report written to] {report_path}")
+        if not all_ok:
+            raise SystemExit(1)
         return
 
     print("=== SpinQit logical structure vs QASM2 export ===")
@@ -435,6 +476,9 @@ def main() -> None:
         print(f"  parsed_hist      : {res['parsed_gate_histogram']}")
         print(f"  result           : {res['message']}")
         print()
+
+    if report_path is not None:
+        print(f"[OK] JSON report written to: {report_path}")
 
     if not all_ok:
         raise SystemExit(1)
