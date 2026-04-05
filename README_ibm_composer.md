@@ -3,12 +3,12 @@
 This document explains how to export **IBM Quantum Composer-compatible OpenQASM 2.0** circuits from this repository and how to use them in the Composer environment at `quantum.cloud.ibm.com/composer`.
 
 The goal is **not** to move the whole MLAE workflow into Composer. Instead, the goal is to export the **quantum circuits**
-\[
+$$
 Q^k A\lvert 000\rangle,
-\]
+$$
 one circuit for each amplification index `k`, run those circuits in IBM Quantum Composer, and then perform the **maximum-likelihood estimation (MLE)** classically outside Composer.
 
-IBM Quantum Composer provides an editable **OpenQASM 2.0** code view synchronized with the circuit view, so it is a natural target for this export path. citeturn115054search0turn115054search2turn115054search4
+IBM Quantum Composer provides an editable **OpenQASM 2.0** code view synchronized with the circuit view, so it is a natural target for this export path. 
 
 ---
 
@@ -40,9 +40,9 @@ This conservative policy is recommended because IBM backends have backend-specif
 
 ## 2. Why OpenQASM 2.0 is sufficient here
 
-OpenQASM is appropriate for the **circuit layer** of the MLAE workflow because it describes ordered sequences of gates, measurements, and classical registers. IBM documents OpenQASM as a machine-independent circuit description language, and Composer directly supports editing OpenQASM 2.0. citeturn115054search2turn115054search4turn115054search10
+OpenQASM is appropriate for the **circuit layer** of the MLAE workflow because it describes ordered sequences of gates, measurements, and classical registers. IBM documents OpenQASM as a machine-independent circuit description language, and Composer directly supports editing OpenQASM 2.0. 
 
-However, OpenQASM 2.0 is **not** the right place to encode the full MLAE workflow, because MLAE also contains a classical postprocessing stage. IBM explicitly notes that OpenQASM 2.0 is a simple language and is not suitable as a general serialization format for arbitrary higher-level program objects. citeturn115054search10
+However, OpenQASM 2.0 is **not** the right place to encode the full MLAE workflow, because MLAE also contains a classical postprocessing stage. IBM explicitly notes that OpenQASM 2.0 is a simple language and is not suitable as a general serialization format for arbitrary higher-level program objects. 
 
 Therefore, the correct split is:
 
@@ -117,9 +117,9 @@ The logical content is:
 
 That is,
 
-\[
+$$
 \text{circuit}(k) = Q^k A \lvert 000 \rangle.
-\]
+$$
 
 This is the correct object to run in Composer because Composer works at the circuit level, while MLAE as an estimator combines the outcome statistics from several such circuits.
 
@@ -127,7 +127,7 @@ This is the correct object to run in Composer because Composer works at the circ
 
 ## 6. Importing the files into IBM Quantum Composer
 
-IBM Quantum Composer supports a code editor in which **OpenQASM 2.0 is editable**, and the code view is synchronized with the visual circuit representation. Composer also supports exporting code for use in different applications. citeturn115054search2turn115054search0
+IBM Quantum Composer supports a code editor in which **OpenQASM 2.0 is editable**, and the code view is synchronized with the visual circuit representation. Composer also supports exporting code for use in different applications.
 
 Recommended workflow:
 
@@ -139,7 +139,7 @@ Recommended workflow:
 6. Run the circuit.
 7. Repeat for each value of `k`.
 
-Because the code editor and circuit view are synchronized, Composer is useful both for execution and for checking that the decomposition looks structurally correct. citeturn115054search2
+Because the code editor and circuit view are synchronized, Composer is useful both for execution and for checking that the decomposition looks structurally correct. 
 
 ---
 
@@ -166,7 +166,7 @@ For MLAE, the key quantity is the success probability associated with the ancill
 
 ## 8. Practical advice for IBM hardware
 
-Even when Composer accepts the OpenQASM file, actual execution quality depends on the chosen IBM backend. IBM exposes per-backend calibration data, instruction properties, and transpilation target information, which are relevant when analyzing depth, two-qubit error accumulation, and measurement quality. citeturn115054search1turn115054search5
+Even when Composer accepts the OpenQASM file, actual execution quality depends on the chosen IBM backend. IBM exposes per-backend calibration data, instruction properties, and transpilation target information, which are relevant when analyzing depth, two-qubit error accumulation, and measurement quality. 
 
 For that reason, the recommended initial campaign is conservative:
 
@@ -239,9 +239,9 @@ This is especially useful before running a full experiment campaign on IBM hardw
 
 The IBM Composer path is feasible and technically natural for this repository because:
 
-- Composer supports editable **OpenQASM 2.0** and keeps code and circuit views synchronized, citeturn115054search0turn115054search2
-- OpenQASM 2.0 is appropriate for the circuit layer of MLAE, citeturn115054search4turn115054search10
-- backend-dependent instruction constraints and calibration data can then be inspected directly on IBM Quantum Platform, citeturn115054search1turn115054search5
+- Composer supports editable **OpenQASM 2.0** and keeps code and circuit views synchronized, 
+- OpenQASM 2.0 is appropriate for the circuit layer of MLAE, 
+- backend-dependent instruction constraints and calibration data can then be inspected directly on IBM Quantum Platform, 
 - and the repository’s current 3-qubit structured QAE construction is simple enough to be exported in a conservative gate set compatible with Composer.
 
 The right conceptual model is:
