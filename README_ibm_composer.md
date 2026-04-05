@@ -36,7 +36,7 @@ The exporter intentionally emits a conservative OpenQASM 2.0 subset using only:
 - `ccx`
 - `measure`
 
-This conservative policy is recommended because IBM backends have backend-specific transpilation constraints and instruction sets, and Composer-based workflows are generally smoother when circuits are expressed in standard operations rather than in higher-level custom macros. Backend instruction support and calibration data are exposed on IBM Quantum Platform through backend details and transpilation targets. citeturn115054search1turn115054search5
+This conservative policy is recommended because IBM backends have backend-specific transpilation constraints and instruction sets, and Composer-based workflows are generally smoother when circuits are expressed in standard operations rather than in higher-level custom macros. Backend instruction support and calibration data are exposed on IBM Quantum Platform through backend details and transpilation targets. 
 
 ---
 
