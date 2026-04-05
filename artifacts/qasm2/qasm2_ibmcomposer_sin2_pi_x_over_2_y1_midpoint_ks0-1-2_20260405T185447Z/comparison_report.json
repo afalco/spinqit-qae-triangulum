@@ -1,0 +1,84 @@
+{
+  "all_ok": true,
+  "integrand": "sin^2(pi*x/2)",
+  "y": 1.0,
+  "rule": "midpoint",
+  "angle_tol": 1e-09,
+  "results": [
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z_k0.qasm",
+      "k": 0,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 14,
+      "parsed_op_count": 14,
+      "expected_gate_histogram": {
+        "h": 2,
+        "ry": 5,
+        "cx": 4,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 2,
+        "ry": 5,
+        "cx": 4,
+        "measure": 3
+      },
+      "path_type": "affine"
+    },
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z_k1.qasm",
+      "k": 1,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 46,
+      "parsed_op_count": 46,
+      "expected_gate_histogram": {
+        "h": 8,
+        "ry": 15,
+        "cx": 12,
+        "z": 1,
+        "x": 6,
+        "ccx": 1,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 8,
+        "ry": 15,
+        "cx": 12,
+        "z": 1,
+        "x": 6,
+        "ccx": 1,
+        "measure": 3
+      },
+      "path_type": "affine"
+    },
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_20260405T185447Z_k2.qasm",
+      "k": 2,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 78,
+      "parsed_op_count": 78,
+      "expected_gate_histogram": {
+        "h": 14,
+        "ry": 25,
+        "cx": 20,
+        "z": 2,
+        "x": 12,
+        "ccx": 2,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 14,
+        "ry": 25,
+        "cx": 20,
+        "z": 2,
+        "x": 12,
+        "ccx": 2,
+        "measure": 3
+      },
+      "path_type": "affine"
+    }
+  ]
+}
