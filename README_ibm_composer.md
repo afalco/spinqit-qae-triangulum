@@ -3,9 +3,11 @@
 This document explains how to export **IBM Quantum Composer-compatible OpenQASM 2.0** circuits from this repository and how to use them in the Composer environment at `quantum.cloud.ibm.com/composer`.
 
 The goal is **not** to move the whole MLAE workflow into Composer. Instead, the goal is to export the **quantum circuits**
+
 $$
 Q^k A\lvert 000\rangle,
 $$
+
 one circuit for each amplification index `k`, run those circuits in IBM Quantum Composer, and then perform the **maximum-likelihood estimation (MLE)** classically outside Composer.
 
 IBM Quantum Composer provides an editable **OpenQASM 2.0** code view synchronized with the circuit view, so it is a natural target for this export path. 
