@@ -20,7 +20,7 @@ GFUNC_CHOICES = list(OFFICIAL_GFUNCS)
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Export MLAE/QAE circuits as OpenQASM 2.0 files."
+        description="Export IBM Composer-compatible OpenQASM 2.0 circuits."
     )
     p.add_argument("--y", type=float, default=1.0, help="Upper limit y in [0,1].")
     group = p.add_mutually_exclusive_group(required=True)
@@ -72,7 +72,7 @@ def main() -> None:
     slug = integrand_slug(gfunc=args.gfunc, expr=args.expr)
     label = integrand_label(gfunc=args.gfunc, expr=args.expr)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"qasm2_{slug}_y{args.y:g}_{args.rule}_ks{'-'.join(map(str, ks))}_{stamp}"
+    run_id = f"qasm2_ibmcomposer_{slug}_y{args.y:g}_{args.rule}_ks{'-'.join(map(str, ks))}_{stamp}"
 
     outdir = os.path.join(args.outdir, run_id)
     ensure_dir(outdir)
@@ -89,6 +89,7 @@ def main() -> None:
     metadata = {
         "run_id": run_id,
         "format": "OpenQASM 2.0",
+        "target_environment": "IBM Quantum Composer",
         "integrand_label": label,
         "gfunc": args.gfunc,
         "expr": args.expr,
@@ -110,6 +111,12 @@ def main() -> None:
             if quad is None
             else {"c0": quad[0], "c1": quad[1], "c2": quad[2], "c12": quad[3]}
         ),
+        "export_policy": {
+            "custom_gates": False,
+            "expanded_cry": True,
+            "expanded_ccry": True,
+            "allowed_ops": ["h", "x", "z", "ry", "cx", "ccx", "measure"],
+        },
         "state_order": "q0q1q2",
         "measurement_map": {"q[0]": "c[0]", "q[1]": "c[1]", "q[2]": "c[2]"},
         "timestamp_utc": stamp,
@@ -120,7 +127,7 @@ def main() -> None:
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
-    print("[OK] OpenQASM 2.0 export completed.")
+    print("[OK] IBM Composer-compatible OpenQASM 2.0 export completed.")
     for p in written:
         print(" ", p)
     print(" ", meta_path)

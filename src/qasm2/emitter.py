@@ -1,11 +1,8 @@
 # src/qasm2/emitter.py
 from __future__ import annotations
 
-import math
-from dataclasses import asdict
-from typing import Iterable, Sequence
+from typing import Sequence
 
-from src.qae.grover_op import apply_Q_iteration
 from src.qae.state_prep import (
     ASpec,
     _extract_affine_angles_for_two_controls,
@@ -16,16 +13,14 @@ from src.qae.state_prep import (
 
 class Qasm2Builder:
     """
-    Minimal OpenQASM 2.0 text builder for the 3-qubit QAE/Triangulum setup.
+    IBM Composer-compatible OpenQASM 2.0 emitter.
 
-    Qubit convention:
-      - q[0], q[1] = index qubits
-      - q[2]       = ancilla
+    Convention:
+      q[0], q[1] = index qubits
+      q[2]       = ancilla
 
-    Classical convention:
-      - measure q[i] -> c[i]
-      - downstream interpretation should remain consistent with the repo's
-        canonical q0q1q2 convention.
+    The output intentionally avoids custom gate declarations and uses only:
+      h, x, z, ry, cx, ccx, measure
     """
 
     def __init__(self, n_qubits: int = 3, n_clbits: int = 3) -> None:
@@ -40,8 +35,6 @@ class Qasm2Builder:
                 "OPENQASM 2.0;",
                 'include "qelib1.inc";',
                 "",
-                self._custom_gate_defs().rstrip(),
-                "",
                 f"qreg q[{self.n_qubits}];",
                 f"creg c[{self.n_clbits}];",
                 "",
@@ -50,28 +43,9 @@ class Qasm2Builder:
 
     @staticmethod
     def _fmt_angle(theta: float) -> str:
-        # Numeric literals are safest across OpenQASM 2.0 parsers.
         if abs(theta) < 1e-15:
             return "0.0"
         return f"{theta:.16f}"
-
-    @staticmethod
-    def _custom_gate_defs() -> str:
-        # qelib1.inc has cx, ccx, h, x, z, ry, etc.
-        # We define cry and ccry explicitly to avoid backend-dependent assumptions.
-        return """gate cry(theta) c,t {
-  ry(theta/2) t;
-  cx c,t;
-  ry(-theta/2) t;
-  cx c,t;
-}
-
-gate ccry(theta) c0,c1,t {
-  cry(theta/2) c1,t;
-  cx c0,c1;
-  cry(-theta/2) c1,t;
-  cx c0,c1;
-}"""
 
     def comment(self, text: str) -> None:
         for line in text.splitlines():
@@ -90,6 +64,8 @@ gate ccry(theta) c0,c1,t {
         self.lines.append(f"z q[{q}];")
 
     def ry(self, theta: float, q: int) -> None:
+        if abs(theta) < 1e-12:
+            return
         self.lines.append(f"ry({self._fmt_angle(theta)}) q[{q}];")
 
     def cx(self, c: int, t: int) -> None:
@@ -98,22 +74,45 @@ gate ccry(theta) c0,c1,t {
     def ccx(self, c0: int, c1: int, t: int) -> None:
         self.lines.append(f"ccx q[{c0}],q[{c1}],q[{t}];")
 
-    def cry(self, theta: float, c: int, t: int) -> None:
-        if abs(theta) < 1e-12:
-            return
-        self.lines.append(f"cry({self._fmt_angle(theta)}) q[{c}],q[{t}];")
-
-    def ccry(self, theta: float, c0: int, c1: int, t: int) -> None:
-        if abs(theta) < 1e-12:
-            return
-        self.lines.append(f"ccry({self._fmt_angle(theta)}) q[{c0}],q[{c1}],q[{t}];")
-
     def measure_all(self) -> None:
         for i in range(min(self.n_qubits, self.n_clbits)):
             self.lines.append(f"measure q[{i}] -> c[{i}];")
 
     def build(self) -> str:
         return "\n".join(self.lines).rstrip() + "\n"
+
+
+def _emit_cry_expanded(builder: Qasm2Builder, theta: float, c: int, t: int) -> None:
+    """
+    Expanded controlled-Ry using only ry and cx:
+        cry(theta) = ry(theta/2) ; cx ; ry(-theta/2) ; cx
+    """
+    if abs(theta) < 1e-12:
+        return
+    builder.ry(theta / 2.0, t)
+    builder.cx(c, t)
+    builder.ry(-theta / 2.0, t)
+    builder.cx(c, t)
+
+
+def _emit_ccry_expanded(
+    builder: Qasm2Builder, theta: float, c0: int, c1: int, t: int
+) -> None:
+    """
+    Expanded CC-Ry using only expanded CRy plus cx on controls:
+        ccry(theta) =
+            cry(theta/2) with control c1 on t
+            cx c0,c1
+            cry(-theta/2) with control c1 on t
+            cx c0,c1
+    and each cry is itself expanded to ry/cx/ry/cx.
+    """
+    if abs(theta) < 1e-12:
+        return
+    _emit_cry_expanded(builder, theta / 2.0, c1, t)
+    builder.cx(c0, c1)
+    _emit_cry_expanded(builder, -theta / 2.0, c1, t)
+    builder.cx(c0, c1)
 
 
 def _emit_A_from_spec(builder: Qasm2Builder, spec: ASpec) -> None:
@@ -127,24 +126,22 @@ def _emit_A_from_spec(builder: Qasm2Builder, spec: ASpec) -> None:
     affine = _extract_affine_angles_for_two_controls(spec)
     if affine is not None:
         c0, c1, c2 = affine
-        if abs(c0) > 1e-12:
-            builder.ry(c0, a)
-        builder.cry(c1, q0, a)
-        builder.cry(c2, q1, a)
+        builder.ry(c0, a)
+        _emit_cry_expanded(builder, c1, q0, a)
+        _emit_cry_expanded(builder, c2, q1, a)
         return
 
     quad = _extract_quadratic_angles_for_two_controls(spec)
     if quad is not None:
         c0, c1, c2, c12 = quad
-        if abs(c0) > 1e-12:
-            builder.ry(c0, a)
-        builder.cry(c1, q0, a)
-        builder.cry(c2, q1, a)
-        builder.ccry(c12, q0, q1, a)
+        builder.ry(c0, a)
+        _emit_cry_expanded(builder, c1, q0, a)
+        _emit_cry_expanded(builder, c2, q1, a)
+        _emit_ccry_expanded(builder, c12, q0, q1, a)
         return
 
     raise NotImplementedError(
-        "OpenQASM 2.0 exporter currently supports the 2-index-qubit affine/quadratic paths only."
+        "IBM Composer exporter currently supports the 2-index-qubit affine/quadratic paths only."
     )
 
 
@@ -156,10 +153,9 @@ def _emit_Adag_from_spec(builder: Qasm2Builder, spec: ASpec) -> None:
     affine = _extract_affine_angles_for_two_controls(spec)
     if affine is not None:
         c0, c1, c2 = affine
-        builder.cry(-c2, q1, a)
-        builder.cry(-c1, q0, a)
-        if abs(c0) > 1e-12:
-            builder.ry(-c0, a)
+        _emit_cry_expanded(builder, -c2, q1, a)
+        _emit_cry_expanded(builder, -c1, q0, a)
+        builder.ry(-c0, a)
         builder.h(q0)
         builder.h(q1)
         return
@@ -167,17 +163,16 @@ def _emit_Adag_from_spec(builder: Qasm2Builder, spec: ASpec) -> None:
     quad = _extract_quadratic_angles_for_two_controls(spec)
     if quad is not None:
         c0, c1, c2, c12 = quad
-        builder.ccry(-c12, q0, q1, a)
-        builder.cry(-c2, q1, a)
-        builder.cry(-c1, q0, a)
-        if abs(c0) > 1e-12:
-            builder.ry(-c0, a)
+        _emit_ccry_expanded(builder, -c12, q0, q1, a)
+        _emit_cry_expanded(builder, -c2, q1, a)
+        _emit_cry_expanded(builder, -c1, q0, a)
+        builder.ry(-c0, a)
         builder.h(q0)
         builder.h(q1)
         return
 
     raise NotImplementedError(
-        "OpenQASM 2.0 exporter currently supports the 2-index-qubit affine/quadratic paths only."
+        "IBM Composer exporter currently supports the 2-index-qubit affine/quadratic paths only."
     )
 
 
@@ -214,11 +209,11 @@ def _emit_Q_iteration(builder: Qasm2Builder, spec: ASpec) -> None:
 def export_qasm2_for_k(spec: ASpec, k: int, add_measurements: bool = True) -> str:
     if tuple(spec.index_qubits) != (0, 1) or spec.ancilla != 2:
         raise ValueError(
-            "This initial exporter assumes index_qubits=(0,1) and ancilla=2."
+            "This initial IBM Composer exporter assumes index_qubits=(0,1) and ancilla=2."
         )
 
     builder = Qasm2Builder(n_qubits=3, n_clbits=3)
-    builder.comment(f"Circuit for k={k}: Q^k A |000>")
+    builder.comment(f"IBM Composer-compatible circuit for k={k}: Q^k A |000>")
     builder.blank()
 
     _emit_A_from_spec(builder, spec)
