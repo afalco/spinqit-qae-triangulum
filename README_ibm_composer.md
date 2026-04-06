@@ -1,32 +1,35 @@
-# IBM Quantum Composer workflow for `spinqit-qae-triangulum`
+# IBM Quantum Composer and Runtime workflow for `spinqit-qae-triangulum`
 
-This document explains how to export **IBM Quantum Composer-compatible OpenQASM 2.0** circuits from this repository and how to use them in the Composer environment at `quantum.cloud.ibm.com/composer`.
+This document describes the practical IBM workflow that has now been validated for the repository:
 
-The goal is **not** to move the whole MLAE workflow into Composer. Instead, the goal is to export the **quantum circuits**
+1. export IBM Composer-compatible OpenQASM 2.0 circuits,
+2. run one circuit per amplification index `k` on IBM Quantum,
+3. recover the IBM Runtime job results,
+4. convert those results into repository-friendly JSON artifacts,
+5. combine the data from `k=0,1,2,...` for classical MLAE postprocessing.
 
-$$
+The purpose of this path is **not** to move the whole MLAE workflow into Composer.  
+The purpose is to export the **quantum circuits**
+\[
 Q^k A\lvert 000\rangle,
-$$
-
-one circuit for each amplification index `k`, run those circuits in IBM Quantum Composer, and then perform the **maximum-likelihood estimation (MLE)** classically outside Composer.
-
-IBM Quantum Composer provides an editable **OpenQASM 2.0** code view synchronized with the circuit view, so it is a natural target for this export path. 
+\]
+run them on IBM Quantum, and then perform the estimator and data analysis classically outside IBM Composer.
 
 ---
 
-## 1. Scope of this exporter
+## 1. Scope of the IBM exporter
 
-The IBM Composer exporter is designed for the **3-qubit QAE setup** used in this repository:
+The exporter targets the **3-qubit QAE setup** used in this repository:
 
 - `q[0]`, `q[1]`: index qubits,
 - `q[2]`: ancilla qubit.
 
-It currently targets the structured two-index-qubit state-preparation path already implemented in the repository:
+It is designed for the structured two-index-qubit state-preparation path already present in the repository:
 
-- **affine angle structure**, and
-- **quadratic angle structure**.
+- affine angle structure,
+- quadratic angle structure.
 
-The exporter intentionally emits a conservative OpenQASM 2.0 subset using only:
+The emitted OpenQASM 2.0 is deliberately conservative and uses only:
 
 - `h`
 - `x`
@@ -36,219 +39,365 @@ The exporter intentionally emits a conservative OpenQASM 2.0 subset using only:
 - `ccx`
 - `measure`
 
-This conservative policy is recommended because IBM backends have backend-specific transpilation constraints and instruction sets, and Composer-based workflows are generally smoother when circuits are expressed in standard operations rather than in higher-level custom macros. Backend instruction support and calibration data are exposed on IBM Quantum Platform through backend details and transpilation targets. 
+No custom gates are required in the IBM Composer-oriented export.
 
 ---
 
-## 2. Why OpenQASM 2.0 is sufficient here
+## 2. Files involved in the IBM workflow
 
-OpenQASM is appropriate for the **circuit layer** of the MLAE workflow because it describes ordered sequences of gates, measurements, and classical registers. IBM documents OpenQASM as a machine-independent circuit description language, and Composer directly supports editing OpenQASM 2.0. 
-
-However, OpenQASM 2.0 is **not** the right place to encode the full MLAE workflow, because MLAE also contains a classical postprocessing stage. IBM explicitly notes that OpenQASM 2.0 is a simple language and is not suitable as a general serialization format for arbitrary higher-level program objects. 
-
-Therefore, the correct split is:
-
-- **inside Composer / OpenQASM 2.0**: each circuit `Q^k A |000>`
-- **outside Composer**: aggregation of counts and MLE estimation
-
----
-
-## 3. Files to add to the repository
-
-Add the following files:
+The practical IBM path uses the following scripts and modules:
 
 - `src/qasm2/__init__.py`
 - `src/qasm2/emitter.py`
 - `scripts/04_export_qasm2.py`
+- `scripts/05_compare_spinqit_vs_qasm2.py`
+- `scripts/06_ibm_job_to_json.py`
 
-The emitter should generate **IBM Composer-compatible OpenQASM 2.0** and should avoid custom gate declarations. In particular:
+Their roles are:
 
-- `CRy(theta)` is emitted through its explicit expansion in `ry` and `cx`,
-- `CCRy(theta)` is emitted through an explicit decomposition using only expanded `CRy` and `cx`,
-- `S_0` is emitted as `X... CCZ ...X`, with `CCZ` implemented as `H-CCX-H` on the ancilla.
-
-This matches the structure already used in the current repository for the 3-qubit case.
+- `04_export_qasm2.py`: export one `.qasm` file per `k`,
+- `05_compare_spinqit_vs_qasm2.py`: verify that the export preserves the logical circuit structure,
+- `06_ibm_job_to_json.py`: convert IBM Runtime job outputs into JSON artifacts ready for postprocessing.
 
 ---
 
-## 4. Export script usage
+## 3. Exporting IBM Composer-compatible OpenQASM 2.0
 
-Once the exporter has been added, generate the OpenQASM files with, for example:
+Typical usage:
 
 ```bash
-python scripts/04_export_qasm2.py --gfunc "sin^2(pi*x)" --y 1.0 --rule midpoint --ks 0,1,2
+python scripts/04_export_qasm2.py --gfunc "sin^2(pi*x/2)" --y 1.0 --rule midpoint --ks 0,1,2
 ```
 
-or
+or, for another integrand,
 
 ```bash
 python scripts/04_export_qasm2.py --gfunc "x" --y 1.0 --rule midpoint --ks 0,1,2
 ```
 
-This creates an output directory such as:
+This generates a directory such as:
 
 ```text
-artifacts/qasm2/qasm2_ibmcomposer_x_y1_midpoint_ks0-1-2_<timestamp>/
+artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_<timestamp>/
 ```
 
 containing:
 
-- one `.qasm` file for each value of `k`, and
-- one `metadata.json` file.
+- one `.qasm` file for each value of `k`,
+- one `metadata.json` file recording the export parameters.
 
-A typical output set is:
+Typical output files:
 
 ```text
-qasm2_ibmcomposer_x_y1_midpoint_ks0-1-2_<timestamp>_k0.qasm
-qasm2_ibmcomposer_x_y1_midpoint_ks0-1-2_<timestamp>_k1.qasm
-qasm2_ibmcomposer_x_y1_midpoint_ks0-1-2_<timestamp>_k2.qasm
-qasm2_ibmcomposer_x_y1_midpoint_ks0-1-2_<timestamp>_metadata.json
+..._k0.qasm
+..._k1.qasm
+..._k2.qasm
+..._metadata.json
 ```
 
 ---
 
-## 5. What each exported circuit represents
+## 4. What each exported circuit represents
 
-Each exported file corresponds to a **single** amplification index `k`.
+Each exported `.qasm` file corresponds to a **single** amplification index `k`.
 
-The logical content is:
+Its logical content is:
 
 1. prepare the state with `A`,
-2. apply the Grover-style QAE iterate `Q` exactly `k` times,
+2. apply the QAE iterate `Q` exactly `k` times,
 3. measure all qubits.
 
-That is,
+Thus,
 
-$$
-\text{circuit}(k) = Q^k A \lvert 000 \rangle.
-$$
+\[
+\text{circuit}(k)=Q^k A\lvert 000\rangle.
+\]
 
-This is the correct object to run in Composer because Composer works at the circuit level, while MLAE as an estimator combines the outcome statistics from several such circuits.
+This is the correct object to run in Composer or IBM Runtime, because MLAE combines the outcome statistics of several such circuits classically.
 
 ---
 
-## 6. Importing the files into IBM Quantum Composer
+## 5. Structural validation of the exported QASM
 
-IBM Quantum Composer supports a code editor in which **OpenQASM 2.0 is editable**, and the code view is synchronized with the visual circuit representation. Composer also supports exporting code for use in different applications.
+Before running a campaign, validate that the export preserves the logical SpinQit structure.
+
+Example:
+
+```bash
+python scripts/05_compare_spinqit_vs_qasm2.py \
+  --qasm-dir artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_over_2_y1_midpoint_ks0-1-2_<timestamp> \
+  --gfunc "sin^2(pi*x/2)" \
+  --y 1.0 \
+  --rule midpoint \
+  --write-report
+```
+
+This checks that the exported circuit matches the expected ordering of:
+
+- initial `A`,
+- `S_{\psi_0}`,
+- `A^\dagger`,
+- `S_0`,
+- repeated `Q` blocks,
+- final measurements.
+
+It also writes a JSON report, typically:
+
+```text
+artifacts/qasm2/.../comparison_report.json
+```
+
+---
+
+## 6. Importing into IBM Quantum Composer
+
+Each exported `.qasm` file can be opened in IBM Quantum Composer.
 
 Recommended workflow:
 
-1. Open IBM Quantum Composer.
-2. Create a new circuit or open the code editor.
-3. Paste the contents of one exported `.qasm` file into the OpenQASM editor, or upload the `.qasm` file if that option is available in your Composer session.
-4. Verify that the circuit diagram renders correctly.
-5. Select a backend or simulator.
-6. Run the circuit.
-7. Repeat for each value of `k`.
+1. open Composer,
+2. load or paste the content of one `.qasm` file,
+3. verify that the circuit diagram renders correctly,
+4. run the circuit in simulator first,
+5. then execute on hardware if desired,
+6. repeat for each value of `k`.
 
-Because the code editor and circuit view are synchronized, Composer is useful both for execution and for checking that the decomposition looks structurally correct. 
+For MLAE, remember that **each `k` is a separate circuit**.  
+Composer executes circuits individually; the estimator is assembled later outside Composer.
 
 ---
 
-## 7. Reading the results correctly
+## 7. Recovering IBM Runtime jobs
 
-The exported circuits measure all three qubits:
+If the circuit is run through IBM Runtime and you know the job ID, the following pattern retrieves the job:
+
+```python
+from qiskit_ibm_runtime import QiskitRuntimeService
+
+service = QiskitRuntimeService(
+    channel="ibm_quantum_platform",
+    token="YOUR_IBM_QUANTUM_TOKEN",
+    instance="YOUR_INSTANCE_CRN",
+)
+
+job = service.job("YOUR_JOB_ID")
+result = job.result()
+print(result)
+```
+
+If no account has been saved locally for `ibm_quantum_platform`, then `token=...` must be provided explicitly or the account must first be saved with `QiskitRuntimeService.save_account(...)`.
+
+---
+
+## 8. Important difference from some backend wrappers
+
+IBM Runtime results may not come back as a simple pre-aggregated dictionary of counts.
+
+In the validated workflow here, the downloaded IBM result contained:
+
+- a classified measurement payload,
+- encoded as compressed/base64 data,
+- representing a boolean matrix of shape `(shots, nbits)`.
+
+For the present 3-qubit circuits, that means a matrix of shape:
+
+```text
+(shots, 3)
+```
+
+So the IBM path explicitly requires:
+
+1. decode the boolean matrix,
+2. reconstruct counts,
+3. fix the bitstring convention,
+4. extract the ancilla marginal,
+5. write a normalized JSON artifact for postprocessing.
+
+This is one of the main practical differences relative to some repository wrappers, where counts or normalized probability dictionaries may already be returned directly.
+
+---
+
+## 9. Converting IBM job outputs to repository JSON
+
+Use `scripts/06_ibm_job_to_json.py` to convert a downloaded IBM job into a repository-friendly JSON artifact.
+
+### 9.1 Generic usage
+
+```bash
+python scripts/06_ibm_job_to_json.py \
+  --info artifacts/qasm2/job-<JOBID>-info.json \
+  --result artifacts/qasm2/job-<JOBID>-result.json \
+  --out artifacts/qasm2/qae_k0_ibm_backend.json \
+  --ancilla-bit 2 \
+  --bitstring-order qiskit
+```
+
+If desired, `k` can be passed explicitly:
+
+```bash
+python scripts/06_ibm_job_to_json.py \
+  --info artifacts/qasm2/job-<JOBID>-info.json \
+  --result artifacts/qasm2/job-<JOBID>-result.json \
+  --out artifacts/qasm2/qae_k1_ibm_backend.json \
+  --k 1 \
+  --ancilla-bit 2 \
+  --bitstring-order qiskit
+```
+
+### 9.2 Validated example for `k=0`
+
+The following command was used in the validated IBM workflow for the `k=0` circuit:
+
+```bash
+python scripts/06_ibm_job_to_json.py \
+  --info job-d79b8v0eecps73d82ltg-info.json \
+  --result job-d79b8v0eecps73d82ltg-result.json \
+  --out artifacts/ibm_jobs/qae_k0_ibm_kingston.json \
+  --k 0 \
+  --ancilla-bit 2 \
+  --bitstring-order qiskit
+```
+
+This produces a postprocessing JSON artifact containing:
+
+- job metadata,
+- reconstructed counts,
+- reconstructed probabilities,
+- counts in both `c012` and Qiskit-style bitstring orderings,
+- one-bit marginals,
+- ancilla marginal,
+- index-register marginal excluding the ancilla.
+
+### 9.3 Interpreting the ancilla bit
+
+In this repository's IBM workflow, the qubit-to-classical mapping is:
 
 - `q[0] -> c[0]`
 - `q[1] -> c[1]`
 - `q[2] -> c[2]`
 
-The repository should continue to treat the state label convention consistently with its own canonical ordering. The `metadata.json` file therefore records:
-
-- the qubit roles,
-- the measurement map,
-- the value of `k`,
-- the chosen integrand,
-- the quadrature rule,
-- and the extracted affine or quadratic angle data.
-
-For MLAE, the key quantity is the success probability associated with the ancilla measurement, but the full 3-qubit readout is useful for diagnostics, debugging, and consistency checks.
-
----
-
-## 8. Practical advice for IBM hardware
-
-Even when Composer accepts the OpenQASM file, actual execution quality depends on the chosen IBM backend. IBM exposes per-backend calibration data, instruction properties, and transpilation target information, which are relevant when analyzing depth, two-qubit error accumulation, and measurement quality. 
-
-For that reason, the recommended initial campaign is conservative:
-
-- start with `k = 0, 1, 2`,
-- start with an affine or near-affine integrand when possible,
-- inspect circuit depth after import/transpilation,
-- and only then test larger values of `k`.
-
-This matters because the circuits become deeper as `k` increases, and deeper decompositions generally amplify hardware noise.
-
----
-
-## 9. Suggested first experiments
-
-A good first pass is:
-
-### Example A: `g(x) = x`
-
-```bash
-python scripts/04_export_qasm2.py --gfunc "x" --y 1.0 --rule midpoint --ks 0,1,2
-```
-
-This is a good sanity check because the angle structure is especially transparent.
-
-### Example B: `g(x) = sin^2(pi*x)`
-
-```bash
-python scripts/04_export_qasm2.py --gfunc "sin^2(pi*x)" --y 1.0 --rule midpoint --ks 0,1,2
-```
-
-This is closer to the integrands already used in the repository’s QAE experiments.
-
----
-
-## 10. Limitations of the current IBM Composer path
-
-The current exporter is intentionally limited to the structured **two-index-qubit** workflow.
-
-It does **not** aim, at this stage, to:
-
-- serialize the full hybrid MLAE pipeline into OpenQASM,
-- support arbitrary generic multi-controlled constructions beyond the present structured case,
-- or optimize directly for a particular IBM backend’s native instruction set.
-
-Those are reasonable future extensions, but they should be treated as a second phase.
-
----
-
-## 11. Recommended next step after basic import succeeds
-
-Once the exported `.qasm` circuits load correctly in Composer, the next useful step is to add a validation script, for example:
+and the ancilla is `q[2]`, so the correct choice is:
 
 ```text
-scripts/05_compare_spinqit_vs_qasm2.py
+--ancilla-bit 2
 ```
 
-The purpose of that script would be to verify that the exported IBM Composer version preserves the logical ordering of:
+The exported JSON then records the ancilla marginal explicitly as:
 
-- `A`,
-- `A^\dagger`,
-- `S_{\psi_0}`,
-- `S_0`,
-- and therefore `Q`.
+```text
+derived.ancilla_marginal
+```
 
-This is especially useful before running a full experiment campaign on IBM hardware.
+which is the quantity used to estimate the amplitude and, for `k=0`, the discretized integral.
 
 ---
 
-## 12. Summary
+## 10. Recommended directory layout for IBM jobs
 
-The IBM Composer path is feasible and technically natural for this repository because:
+A practical repository layout is:
 
-- Composer supports editable **OpenQASM 2.0** and keeps code and circuit views synchronized, 
-- OpenQASM 2.0 is appropriate for the circuit layer of MLAE, 
-- backend-dependent instruction constraints and calibration data can then be inspected directly on IBM Quantum Platform, 
-- and the repository’s current 3-qubit structured QAE construction is simple enough to be exported in a conservative gate set compatible with Composer.
+```text
+artifacts/
+  qasm2/
+    qasm2_ibmcomposer_<...>/
+      ..._k0.qasm
+      ..._k1.qasm
+      ..._k2.qasm
+      ..._metadata.json
+      comparison_report.json
+  ibm_jobs/
+    job-<JOBID>-info.json
+    job-<JOBID>-result.json
+    qae_k0_ibm_kingston.json
+    qae_k1_ibm_kingston.json
+    qae_k2_ibm_kingston.json
+```
 
-The right conceptual model is:
+This separation keeps the exported circuits apart from the recovered IBM job artifacts and the normalized postprocessing JSON files.
 
-- **export circuits to Composer**,
-- **run one circuit per `k`**,
-- **collect counts**,
-- **perform MLAE classically outside Composer**.
+---
+
+## 11. Reading `k=0`, `k=1`, `k=2` for MLAE
+
+After conversion with `06_ibm_job_to_json.py`, the key quantity for each job is:
+
+```text
+derived.ancilla_marginal.p1
+```
+
+That is the empirical estimate of the success probability:
+
+\[
+\hat p_k = P(\text{ancilla}=1 \mid k).
+\]
+
+For standard amplitude estimation notation,
+
+\[
+a = \sin^2\theta,
+\qquad
+p_k = \sin^2((2k+1)\theta).
+\]
+
+Thus:
+
+- `k=0` gives the direct success probability `a`,
+- `k=1` gives the transformed probability `p_1`,
+- `k=2` gives the transformed probability `p_2`.
+
+These are the data that must later be merged and passed to a classical MLAE estimator.
+
+---
+
+## 12. Important special case: integrands with value `a = 1/2`
+
+For the validated example
+
+\[
+g(x)=\sin^2\!\left(\frac{\pi x}{2}\right),
+\]
+
+with `y=1.0`, 2 index qubits, and midpoint discretization, the encoded amplitude is exactly
+
+\[
+a = \frac12.
+\]
+
+In that case,
+
+\[
+\theta = \frac{\pi}{4},
+\qquad
+p_k = \sin^2((2k+1)\theta)=\frac12
+\quad\text{for all }k.
+\]
+
+So, for this specific integrand, the ideal values of `k=0`, `k=1`, and `k=2` are all the same.
+
+This means that the example is excellent for validating the export and execution pipeline, but it is **not** ideal for demonstrating visible amplitude amplification across `k` values.
+
+---
+
+## 13. Relation to Triangulum workflows
+
+The mathematical target is the same as in the Triangulum experiments: estimate the ancilla success probability corresponding to the encoded discretized integral.
+
+The main practical differences are:
+
+- IBM Runtime may return raw classified measurement payloads rather than already aggregated counts,
+- bitstring conventions must be made explicit during postprocessing,
+- ancilla extraction is handled through the JSON conversion step rather than repository-specific wrappers.
+
+So the estimator is conceptually the same, but the IBM path requires a slightly more explicit data-decoding layer.
+
+---
+
+## 14. Recommended next step after collecting `k=0,1,2`
+
+Once the three JSON artifacts exist, the next step is to merge them into a single MLAE-ready artifact and then run the classical estimator using the ancilla probabilities:
+
+\[
+\hat p_0,\hat p_1,\hat p_2.
+\]
+
+That postprocessing stage remains outside IBM Composer and outside IBM Runtime; it belongs in the repository's classical analysis pipeline.
