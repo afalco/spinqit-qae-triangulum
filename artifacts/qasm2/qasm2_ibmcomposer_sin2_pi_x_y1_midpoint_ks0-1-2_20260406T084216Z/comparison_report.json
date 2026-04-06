@@ -1,0 +1,84 @@
+{
+  "all_ok": true,
+  "integrand": "sin^2(pi*x)",
+  "y": 1.0,
+  "rule": "midpoint",
+  "angle_tol": 1e-09,
+  "results": [
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z_k0.qasm",
+      "k": 0,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 24,
+      "parsed_op_count": 24,
+      "expected_gate_histogram": {
+        "h": 2,
+        "ry": 9,
+        "cx": 10,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 2,
+        "ry": 9,
+        "cx": 10,
+        "measure": 3
+      },
+      "path_type": "quadratic"
+    },
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z_k1.qasm",
+      "k": 1,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 76,
+      "parsed_op_count": 76,
+      "expected_gate_histogram": {
+        "h": 8,
+        "ry": 27,
+        "cx": 30,
+        "z": 1,
+        "x": 6,
+        "ccx": 1,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 8,
+        "ry": 27,
+        "cx": 30,
+        "z": 1,
+        "x": 6,
+        "ccx": 1,
+        "measure": 3
+      },
+      "path_type": "quadratic"
+    },
+    {
+      "file": "artifacts/qasm2/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z/qasm2_ibmcomposer_sin2_pi_x_y1_midpoint_ks0-1-2_20260406T084216Z_k2.qasm",
+      "k": 2,
+      "ok": true,
+      "message": "Exact logical-structure match.",
+      "expected_op_count": 128,
+      "parsed_op_count": 128,
+      "expected_gate_histogram": {
+        "h": 14,
+        "ry": 45,
+        "cx": 50,
+        "z": 2,
+        "x": 12,
+        "ccx": 2,
+        "measure": 3
+      },
+      "parsed_gate_histogram": {
+        "h": 14,
+        "ry": 45,
+        "cx": 50,
+        "z": 2,
+        "x": 12,
+        "ccx": 2,
+        "measure": 3
+      },
+      "path_type": "quadratic"
+    }
+  ]
+}

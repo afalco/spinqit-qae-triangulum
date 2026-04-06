@@ -1,0 +1,44 @@
+{
+  "schema_version": "v0.2",
+  "data": [
+    {
+      "results": {
+        "c": {
+          "data": "VO8Ix433BXDBv4sL7aUDUt0CJwVJAAYBCf7jCoJbUA8cB+FKByIZSOW7loSgwoWr+Z+nsFT1kNCAhxSlkPBfUINLOQH8uHsDBaEDuuz8ONQDYKMXeo/iotQ/ONQKgHSA+NNeuA4C11M1beEeQIRMwrvLCpr3Ceri0gEXAP7fAF5UN6B9EfDgelEAvFwJxHHByFr4Dq6kfyFdBtA3Atpft1AUQCMbKRD3Uq8nBeTeEABUEARFFZr/7acuhwq+OH48EBzohYgD9jWcRfXjLSD4hnQ96gH5CdDnOPRDgJ8qABrj/y9AgqTr3b+e0lv8MaAdQKp1caADvG6tKnQJeSQcgEvVbQIcQHqDwhlBaF+gv57Xpl5bB4ADeH8bOiobbgXcgiAkiIVXOXAQeP88EfK7FQA9T+9CPaqqML5WBm0dgo5fBQAAD95eVH8ZLVK9gKTuQNEK9YEegFpU+sQjEtw+AgQUbwQVeaFciAC0T4HfqI/DPewXhx5YkQT0+A1ekBs9",
+          "shape": [
+            1024,
+            3
+          ],
+          "dtype": "bool"
+        }
+      },
+      "metadata": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  ],
+  "metadata": {
+    "chunk_timing": [
+      {
+        "start": "2026-04-06T07:53:39.235494",
+        "stop": "2026-04-06T07:53:40.295084",
+        "parts": [
+          {
+            "idx_item": 0,
+            "size": 1
+          }
+        ]
+      }
+    ]
+  },
+  "passthrough_data": {
+    "post_processor": {
+      "context": "sampler_v2",
+      "pub_shapes": [
+        1
+      ],
+      "version": "v1"
+    }
+  }
+}
