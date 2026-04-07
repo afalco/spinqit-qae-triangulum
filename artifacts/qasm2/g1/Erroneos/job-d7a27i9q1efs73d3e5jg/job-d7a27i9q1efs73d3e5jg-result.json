@@ -1,0 +1,44 @@
+{
+  "schema_version": "v0.2",
+  "data": [
+    {
+      "results": {
+        "c": {
+          "data": "wEIggBAE6IgBCCIAIJ5hAiAh2HNAGAAMqAEIBSAEEABBGBYAWHTADQD2ABCMAAB4SCEAAAIEEhAMABABCTFBCBRKACCgBAYYAAAAAAAhAAAAAIYCAQAABLB3UA4MAAADygJjH4YACAgBAIBoCBAAAJCDEBBEw4IAA5DAwCboyAEICQAIIAQMAIAhRDHBKDQAFQAsEMQMQDIAgoBDwDBnAABA1zQBAAQAMHIIQAcA+ABAQFMoEAAUKwAAwgBgkcAhAIYkACIcnYABeYYAAALpwCEAAoBggIwACmAE2AABwoFglUAcAQCAOADggAIAGwABCpAJAY4WgIIJERYASIAABsB0w4VBCCRAQIAsggsFBaABAABAwAFgSTIAkBxBgCBMAzAADAAE0wEEBwAAGIJBCBYRhwZAgAUAOBAAgAAMgABA0zAIAGABAA4YMYLNmQAMGBAAQAIAQA4IgIwUIIAFSAHkCAAAgICsAABABgAAADBgAjBAgQAEAIBB2JAWgAJAygEsOoEADQSAGwIAEzQAINDlAAAgAAADAAAAGiAGkAEDQypAsYQgCwIcAKQABQwAaFDEwAAAwAGgrYARwgBABAABgPBA1AIJEPAShbBvGhZoABAFAAAAECDgAIZAEAQhAJAIAACVEAQUAAoAL4IihTRAQIA9OAQEAwABwIAIEAYACFAAwLAMW4FBAiB0CgQoAJCiggAARwIICAIIkgRgCKYDAgCkQAkAiCBQgwEggGDAAAADAh4ACmABgCAAAAoAAABgBwYohYBcCARAOAIAAABwQCSnHIALAQBrgCCggCBAAAAA03sgAIAUATAAwgAgyAAAQAYAALAIgRCgwIAGgQAAAIAiEg5EECYCDwAAIiAAgAIBkhQAQSEIEQAAwACPwHZhQBAUAABAlgFgxaQDHoDhAAJggACgShAdECADEJAKhBuNYARAAwoD0gBAAAgALYyoEEABgDAgV7EH6gAAA4AABoICAJpu34CiAXCiABIARCYMACDtkgxBKA4AEKIC",
+          "shape": [
+            2048,
+            3
+          ],
+          "dtype": "bool"
+        }
+      },
+      "metadata": {
+        "scheduler_timing": null,
+        "stretch_values": null
+      }
+    }
+  ],
+  "metadata": {
+    "chunk_timing": [
+      {
+        "start": "2026-04-06T21:21:16.087155",
+        "stop": "2026-04-06T21:21:17.357198",
+        "parts": [
+          {
+            "idx_item": 0,
+            "size": 1
+          }
+        ]
+      }
+    ]
+  },
+  "passthrough_data": {
+    "post_processor": {
+      "context": "sampler_v2",
+      "pub_shapes": [
+        1
+      ],
+      "version": "v1"
+    }
+  }
+}

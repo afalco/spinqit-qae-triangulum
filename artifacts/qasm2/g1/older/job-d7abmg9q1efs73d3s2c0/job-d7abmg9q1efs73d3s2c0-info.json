@@ -1,0 +1,33 @@
+{
+  "backend": "ibm_kingston",
+  "created": "2026-04-07T08:07:29.376091Z",
+  "estimated_running_time_seconds": 4.120190062,
+  "id": "d7abmg9q1efs73d3s2c0",
+  "cost": 600,
+  "params": {
+    "options": {},
+    "pubs": [
+      [
+        {
+          "__type__": "QuantumCircuit",
+          "__value__": "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"
+        },
+        {
+          "__type__": "ndarray",
+          "__value__": "eJyb7BfqGxDJyFDGUK2eklqcXKRupaBuk2ahrqOgnpZfVFKUmBefX5SSChJ3S8wpTgWKF2ckFqQC+RoGOpo6CrUKFAAuAFOzG1s="
+        },
+        2048
+      ]
+    ],
+    "support_qiskit": true,
+    "version": 2
+  },
+  "program": {
+    "id": "sampler"
+  },
+  "state": {
+    "status": "Completed"
+  },
+  "status": "Completed",
+  "user_id": "IBMid-665003DIST"
+}
