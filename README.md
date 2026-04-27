@@ -95,8 +95,6 @@ spinqit-qae-triangulum/
 │       ├── g0/        3 JSON result files (k=0,1,2)
 │       ├── g1/        3 JSON result files (k=0,1,2)
 │       └── g2/        3 JSON result files (k=0,1,2)
-├── artifacts/
-│   └── qasm2/
 ├── docs/
 ├── calibrate_bit_order.py
 ├── requirements.txt
@@ -271,7 +269,7 @@ A `requirements.txt` is provided. The Triangulum execution scripts are written i
 
 This repository accompanies the paper:
 
-> A. Falcó, F. Chinesta, D. Falcó-Pomares, *Quantum-native numerical integration: circuit complexity via angle-structure hierarchies*, submitted to *Numerische Mathematik*.
+> A. Falcó, F. Chinesta, D. Falcó-Pomares, *On the complexity of quantum numerical integration: an angle-structure characterization*, submitted to *Journal of Complexity*.
 
 Circuit implementations are also related to:
 
