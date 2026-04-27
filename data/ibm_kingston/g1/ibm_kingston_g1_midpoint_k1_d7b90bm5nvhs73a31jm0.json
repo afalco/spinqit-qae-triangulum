@@ -1,0 +1,29 @@
+{
+  "job_id": "d7b90bm5nvhs73a31jm0",
+  "k": 1,
+  "backend": "ibm_kingston",
+  "shots": 2048,
+  "case_id": "g1",
+  "gfunc": "sin2_pi_x_over_2",
+  "rule": "midpoint",
+  "circuit_family": "midpoint",
+  "a_exact": 0.5,
+  "optimization_level": 0,
+  "ancilla_qubit": 2,
+  "ancilla_bit": 2,
+  "bitstring_order": "msb_first_q2q1q0",
+  "m_ancilla": 1001,
+  "p_hat": 0.48876953,
+  "p_exact": 0.5,
+  "counts": {
+    "000": 451,
+    "001": 187,
+    "010": 343,
+    "011": 66,
+    "100": 66,
+    "101": 325,
+    "110": 186,
+    "111": 424
+  },
+  "completed_utc": "2026-04-08T17:28:14.706568Z"
+}
