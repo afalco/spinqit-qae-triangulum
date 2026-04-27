@@ -82,7 +82,7 @@ def build_g0_circuit(k: int):
     described in Remark 7.2 of the paper.
     """
     from qiskit import QuantumCircuit
-    qc = QuantumCircuit(3, 3, name=f"g0_k{k}")
+    qc = QuantumCircuit(3, 3, name=f"g0_midpoint_k{k}")
     apply_A(qc)
     for _ in range(k):
         qc.z(2)
@@ -226,8 +226,10 @@ def main():
             "k":                 k,
             "backend":           args.backend,
             "shots":             args.shots,
+            "case_id":           "g0",
             "gfunc":             "g0_constant_quarter",
             "rule":              "midpoint",
+            "circuit_family":    "midpoint",
             "a_exact":           0.25,
             "optimization_level": 0,
             "initial_layout":    args.initial_layout,
@@ -280,15 +282,19 @@ def main():
             "k":                 k,
             "backend":           args.backend,
             "shots":             N,
+            "case_id":           "g0",
             "gfunc":             "g0_constant_quarter",
             "rule":              "midpoint",
+            "circuit_family":    "midpoint",
             "a_exact":           0.25,
             "optimization_level": 0,
             "initial_layout":    args.initial_layout,
             "ancilla_qubit":     2,
             "ancilla_bit":       2,
+            "bitstring_order":   "qiskit_c2c1c0",
             "m_ancilla":         m,
             "p_hat":             p,
+            "counts":            dict(sorted(counts.items())) if 'counts' in locals() else None,
             "completed_utc":     datetime.now(timezone.utc).isoformat(),
         }
         path = out_dir / f"ibm_kingston_g0_midpoint_k{k}_{job.job_id()}.json"
