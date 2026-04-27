@@ -1,4 +1,42 @@
 #!/usr/bin/env python3
+"""
+09_analyze_ibm_results.py
+=========================
+Analyse IBM Kingston MLAE campaign results.
+
+USAGE
+-----
+Run this script from the directory that contains the raw IBM job files::
+
+    cd data/ibm_kingston/g1          # or g0, g2
+    python3 ../../../scripts/09_analyze_ibm_results.py
+
+INPUT FILES (expected in the current working directory)
+-------------------------------------------------------
+The script scans for pairs of files matching::
+
+    <prefix>-info.json      job metadata  (backend, shots, circuit QPY blob)
+    <prefix>-result.json    job result    (SamplerV2 BitArray payload)
+
+Both files must share the same <prefix> (e.g. the IBM job ID
+``job-d7b90be5nvhs73a31jk0``).  Any number of pairs can be present;
+each pair is processed as one MLAE sample.
+
+OUTPUT FILES (written to the current working directory)
+-------------------------------------------------------
+ibm_results_per_job_v9.csv    one row per job: k, shots, p_hat, p_exact, ...
+ibm_results_summary_v9.csv   one row per (backend, gfunc, rule): a_hat, error
+ibm_results_summary_v9.tex   LaTeX table of the summary
+
+NOTES
+-----
+* Circuit identity (g0/g1/g2, k value) is inferred from the QPY circuit
+  name embedded in the info file; no manual labelling is required.
+* The ancilla qubit is q[2] (bit index 2 of the integer-encoded shot).
+* MLAE uses K = {0,1,2} by default; for g0 the k=1 term has
+  I_1(1/4) = 0 (Fisher degeneracy) and should be interpreted with care.
+"""
+import json, base64, zlib, io, refrom pathlib import Pathfrom collections import Counterimport numpy as npimport pandas as pdfrom scipy.optimize import minimize_scalardef load_json(path):    with open(path, 'r') as f:        return json.load(f)def decode_base64_zlib_npy(payload):    raw = base64.b64decode(payload)    try:        raw = zlib.decompress(raw)    except Exception:        pass    bio = io.BytesIO(raw)    try:        return np.load(bio, allow_pickle=True)    except Exception:        return Nonedef decode_packed_bool_matrix(payload, shape, bitorder="big"):    raw = base64.b64decode(payload)    nbits = int(np.prod(shape))    bits = np.unpackbits(np.frombuffer(raw, dtype=np.uint8), bitorder=bitorder)    if bits.size < nbits:        raise ValueError(f"Packed bool payload too short: got {bits.size} bits, need {nbits}")    bits = bits[:nbits]    return bits.reshape(shape).astype(bool)def ndarray_to_counts(arr, num_bits):    arr = np.asarray(arr)    if arr.ndim == 2 and arr.shape[1] == 1:#!/usr/bin/env python3
 import json, base64, zlib, io, re
 from pathlib import Path
 from collections import Counter
