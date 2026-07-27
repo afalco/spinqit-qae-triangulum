@@ -289,7 +289,8 @@ Circuit implementations are also related to:
 - A. Falcó, D. Falcó-Pomares, H. G. Matthies, *A rigorous and self-contained proof
   of the Grover–Rudolph state preparation algorithm*, **AIMS Mathematics** 11 (2026),
   no. 6, 16366–16394. [doi:10.3934/math.2026672](https://doi.org/10.3934/math.2026672)
-- arXiv:2601.17936 — Elementary quantum gates from Lie group embeddings (submitted to *Quantum*)
+- [arXiv:2601.17936](https://arxiv.org/abs/2601.17936) — *Elementary quantum gates
+  from Lie group embeddings*, submitted to *Quantum Studies: Mathematics and Foundations*
 
 ---
 
