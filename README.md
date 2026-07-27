@@ -1,4 +1,7 @@
-# Efficient State Preparation for Quantum Amplitude Estimation on SpinQ Triangulum (SpinQit)
+# Encoding Complexity of Quantum Numerical Integration — Experiments on SpinQ Triangulum and IBM Kingston
+
+Reference implementation and experimental record for the angle-structure hierarchy
+$\mathcal{G}_n^{(d)}$ and its hardware validation. See [Related Publications](#related-publications).
 
 ## Abstract
 
@@ -269,11 +272,23 @@ A `requirements.txt` is provided. The Triangulum execution scripts are written i
 
 This repository accompanies the paper:
 
-> A. Falcó, F. Chinesta, D. Falcó-Pomares, *On the complexity of quantum numerical integration: an angle-structure characterization*, submitted to *Journal of Complexity*.
+> F. Chinesta, A. Falcó, D. Falcó-Pomares, *On the encoding complexity of quantum
+> numerical integration: an angle-structure characterization*,
+> [arXiv:2604.24289](https://arxiv.org/abs/2604.24289), submitted to
+> *SIAM Journal on Scientific Computing*, Special Section on Quantum Computing:
+> Numerical Algorithms and Applications (2026).
+
+The experiments reported in Section 6 of that paper — simulator, SpinQ Triangulum
+and IBM Kingston runs for the benchmark integrands $g_0$, $g_1$, $g_2$ — are
+reproduced by the scripts and raw data in this repository. The tag
+[`sisc-submission`](../../releases) is the snapshot of the code used to obtain
+those results; later commits may contain improvements not reflected in the paper.
 
 Circuit implementations are also related to:
 
-- arXiv:2601.17930 — Grover–Rudolph state preparation (submitted to *AIMS Mathematics*)
+- A. Falcó, D. Falcó-Pomares, H. G. Matthies, *A rigorous and self-contained proof
+  of the Grover–Rudolph state preparation algorithm*, **AIMS Mathematics** 11 (2026),
+  no. 6, 16366–16394. [doi:10.3934/math.2026672](https://doi.org/10.3934/math.2026672)
 - arXiv:2601.17936 — Elementary quantum gates from Lie group embeddings (submitted to *Quantum*)
 
 ---

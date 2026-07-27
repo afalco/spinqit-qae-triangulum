@@ -1,0 +1,160 @@
+spinqit-qae-triangulum — index of contents
+
+Snapshot accompanying:
+  F. Chinesta, A. Falco, D. Falco-Pomares,
+  "On the encoding complexity of quantum numerical integration:
+   an angle-structure characterization",
+  arXiv:2604.24289, https://arxiv.org/abs/2604.24289
+  submitted to SIAM Journal on Scientific Computing (2026),
+  Special Section on Quantum Computing: Numerical Algorithms and Applications.
+
+This snapshot is identified by the git tag 'sisc-submission' at
+https://github.com/afalco/spinqit-qae-triangulum
+Later commits may contain improvements not reflected in the paper.
+
+Top-level guide
+  scripts/    numbered pipeline: 00 affinity check, 01 simulator, 02+04
+              Triangulum runs, 03 summarisation, 05-06 QASM/job utilities,
+              08 IBM Kingston submission (g0/g1/g2), 09 IBM analysis.
+  src/        integrand layer, encoding operators, backends.
+  data/raw/       raw simulator and hardware outputs (CSV/JSON).
+  data/processed/ derived summaries used for the tables in the paper.
+  data/ibm_kingston/  per-integrand IBM job results.
+  docs/       experiment notes, NMR execution notes, integrand how-to.
+
+----------------------------------------------------------------------
+
+.:
+CITATION.bib
+CITATION.cff
+LICENSE
+README.md
+README_ibm_composer.md
+calibrate_bit_order.py
+data/
+docs/
+requirements.txt
+scripts/
+src/
+
+./data:
+ibm_kingston/
+processed/
+raw/
+
+./data/ibm_kingston:
+g0/
+g1/
+g2/
+
+./data/ibm_kingston/g0:
+ibm_kingston_g0_midpoint_k0_d7b8ush5a5qc73dn666g.json
+ibm_kingston_g0_midpoint_k1_d7b8ut3klj2c73euumhg.json
+ibm_kingston_g0_midpoint_k2_d7b8ute5nvhs73a31hag.json
+
+./data/ibm_kingston/g1:
+ibm_kingston_g1_midpoint_k0_d7b90be5nvhs73a31jk0.json
+ibm_kingston_g1_midpoint_k1_d7b90bm5nvhs73a31jm0.json
+ibm_kingston_g1_midpoint_k2_d7b90bu5nvhs73a31jn0.json
+
+./data/ibm_kingston/g2:
+ibm_kingston_g2_midpoint_k0_d7b92im5nvhs73a31mr0.json
+ibm_kingston_g2_midpoint_k1_d7b92j3klj2c73euusbg.json
+ibm_kingston_g2_midpoint_k2_d7b92j30g7hs73dp9cjg.json
+
+./data/processed:
+campaign_summary_sin2_pi_y1_ks0-1_shots1024_20260309T165358Z.csv
+campaign_summary_sin2_pi_y1_ks0-1_shots1024_20260309T165358Z.json
+campaign_summary_y1_ks0-1_shots1024_20260309T123811Z.csv
+campaign_summary_y1_ks0-1_shots1024_20260309T123811Z.json
+summary_by_k.csv
+summary_runs.csv
+
+./data/raw:
+sim_exp_minus_x_y1_midpoint_ks0-1-2_shots4096_20260309T155013Z.csv
+sim_exp_minus_x_y1_midpoint_ks0-1-2_shots4096_20260309T155013Z.json
+sim_parabola_y1_midpoint_ks0-1-2_shots4096_20260309T153852Z.csv
+sim_parabola_y1_midpoint_ks0-1-2_shots4096_20260309T153852Z.json
+sim_parabola_y1_midpoint_ks0-1-2_shots4096_20260309T154450Z.csv
+sim_parabola_y1_midpoint_ks0-1-2_shots4096_20260309T154450Z.json
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T174937Z.csv
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T174937Z.json
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T175610Z.csv
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T175610Z.json
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T180546Z.csv
+sim_sin2_pi_x_y1_midpoint_ks0-1-2_shots4096_20260328T180546Z.json
+sim_x2_y1_midpoint_ks0-1-2_shots4096_20260309T153137Z.csv
+sim_x2_y1_midpoint_ks0-1-2_shots4096_20260309T153137Z.json
+sim_x2_y1_midpoint_ks0-1-2_shots4096_20260309T155006Z.csv
+sim_x2_y1_midpoint_ks0-1-2_shots4096_20260309T155006Z.json
+sim_x_y1_midpoint_ks0-1-2_shots4096_20260309T153048Z.csv
+sim_x_y1_midpoint_ks0-1-2_shots4096_20260309T153048Z.json
+sim_x_y1_midpoint_ks0-1-2_shots4096_20260309T154603Z.csv
+sim_x_y1_midpoint_ks0-1-2_shots4096_20260309T154603Z.json
+sim_y1_midpoint_ks0-1-2_shots4096_20260309T115120Z.csv
+sim_y1_midpoint_ks0-1-2_shots4096_20260309T115120Z.json
+triangulum_sin2_pi_y1_left_ks0-1_shots1024_20260309T164539Z.csv
+triangulum_sin2_pi_y1_left_ks0-1_shots1024_20260309T164539Z.json
+triangulum_sin2_pi_y1_midpoint_ks0-1_shots1024_20260309T164949Z.csv
+triangulum_sin2_pi_y1_midpoint_ks0-1_shots1024_20260309T164949Z.json
+triangulum_sin2_pi_y1_right_ks0-1_shots1024_20260309T165357Z.csv
+triangulum_sin2_pi_y1_right_ks0-1_shots1024_20260309T165357Z.json
+triangulum_x_y1_midpoint_ks0-1_shots1024_20260309T153611Z.csv
+triangulum_x_y1_midpoint_ks0-1_shots1024_20260309T153611Z.json
+triangulum_x_y1_midpoint_ks0-1_shots1024_20260309T154356Z.csv
+triangulum_x_y1_midpoint_ks0-1_shots1024_20260309T154356Z.json
+triangulum_y1_left_ks0-1_shots1024_20260309T122249Z.csv
+triangulum_y1_left_ks0-1_shots1024_20260309T122249Z.json
+triangulum_y1_midpoint_ks0-1_shots1024_20260309T121335Z.csv
+triangulum_y1_midpoint_ks0-1_shots1024_20260309T121335Z.json
+triangulum_y1_midpoint_ks0-1_shots1024_20260309T121842Z.csv
+triangulum_y1_midpoint_ks0-1_shots1024_20260309T121842Z.json
+triangulum_y1_midpoint_ks0_shots1024_20260309T120603Z.csv
+triangulum_y1_midpoint_ks0_shots1024_20260309T120603Z.json
+triangulum_y1_midpoint_ks1_shots1024_20260309T120844Z.csv
+triangulum_y1_midpoint_ks1_shots1024_20260309T120844Z.json
+triangulum_y1_right_ks0-1_shots1024_20260309T122701Z.csv
+triangulum_y1_right_ks0-1_shots1024_20260309T122701Z.json
+
+./docs:
+add_affine_friendly_function.md
+experiment_notes.md
+nmr_execution.md
+
+./scripts:
+00_check_function_affinity.py
+01_run_mlae_sim.py
+02_run_mlae_triangulum.py
+03_summarize_results.py
+04_export_qasm2.py
+04_run_triangulum_campaign.py
+05_compare_spinqit_vs_qasm2.py
+06_ibm_job_to_json.py
+08_run_ibm_g0_qiskit.py
+08_run_ibm_g1_qiskit.py
+08_run_ibm_g2_qiskit.py
+09_analyze_ibm_results.py
+
+./src:
+backends/
+qae/
+qasm2/
+
+./src/backends:
+bit_order.py
+nmr_triangulum.py
+simulator.py
+
+./src/qae:
+__init__.py
+grover_op.py
+integrands.py
+mlae.py
+postprocess.py
+quadrature.py
+reflections.py
+state_prep.py
+
+./src/qasm2:
+__init__.py
+emitter.py

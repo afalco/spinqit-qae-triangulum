@@ -1,0 +1,62 @@
+cff-version: 1.2.0
+title: >-
+  spinqit-qae-triangulum: Angle-Structure Encoding for Quantum
+  Amplitude Estimation on SpinQ Triangulum and IBM Kingston
+message: >-
+  If you use this software or its experimental data, please cite the
+  accompanying paper (preferred-citation) and, where the code itself is
+  used, this software entry.
+type: software
+authors:
+  - given-names: Antonio
+    family-names: Falcó
+    email: afalco@uchceu.es
+    affiliation: >-
+      Departamento de Matemáticas, Física y Ciencias Tecnológicas,
+      Universidad CEU Cardenal Herrera, Valencia, Spain
+  - given-names: Daniela
+    family-names: Falcó-Pomares
+    email: dfp99@usal.es
+    affiliation: >-
+      Grupo de Investigación Bisite, Universidad de Salamanca,
+      Salamanca, Spain
+  - given-names: Francisco
+    family-names: Chinesta
+    affiliation: PIMM Lab, Arts et Métiers ParisTech, Paris, France
+repository-code: https://github.com/afalco/spinqit-qae-triangulum
+license: MIT
+version: sisc-submission
+date-released: '2026-07-28'
+keywords:
+  - quantum amplitude estimation
+  - numerical integration
+  - state preparation
+  - encoding complexity
+  - Walsh-Hadamard transform
+  - SpinQ Triangulum
+  - IBM Quantum
+identifiers:
+  - type: other
+    value: arXiv:2604.24289
+    description: Preprint of the accompanying paper
+preferred-citation:
+  type: article
+  title: >-
+    On the Encoding Complexity of Quantum Numerical Integration:
+    An Angle-Structure Characterization
+  authors:
+    - given-names: Francisco
+      family-names: Chinesta
+    - given-names: Antonio
+      family-names: Falcó
+    - given-names: Daniela
+      family-names: Falcó-Pomares
+  year: 2026
+  journal: arXiv
+  url: https://arxiv.org/abs/2604.24289
+  identifiers:
+    - type: other
+      value: arXiv:2604.24289
+  notes: >-
+    Submitted to SIAM Journal on Scientific Computing, Special Section on
+    Quantum Computing: Numerical Algorithms and Applications.
